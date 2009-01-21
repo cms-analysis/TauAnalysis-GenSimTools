@@ -1,5 +1,5 @@
 //
-// $Id: TauGenJetEventSelector.h,v 1.1 2008/03/06 09:23:10 veelken Exp $
+// $Id: TauGenJetEventSelector.h,v 1.1 2009/01/21 16:59:06 veelken Exp $
 //
 
 #ifndef TauAnalysis_GenSimTools_TauGenJetEventSelector_h

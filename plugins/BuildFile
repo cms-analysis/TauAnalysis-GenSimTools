@@ -1,0 +1,7 @@
+<export></export>
+<library name=TauAnalysisGenSimTools_plugins file=*.cc>
+  <use name=FWCore/Framework>
+  <use name=DataFormats/JetReco>
+  <use name=PhysicsTools/PatUtils>
+  <use name=PhysicsTools/UtilAlgos>
+</library>

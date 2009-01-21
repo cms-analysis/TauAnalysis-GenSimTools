@@ -1,4 +1,4 @@
-#include "TauAnalysis/GenSimTools/interface/TauGenJetEventSelector.h"
+#include "TauAnalysis/GenSimTools/plugins/TauGenJetEventSelector.h"
 
 #include "PhysicsTools/UtilAlgos/interface/EventSelectorBase.h"
 

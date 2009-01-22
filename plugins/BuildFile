@@ -1,3 +1,14 @@
+<use name=FWCore/Framework>
+<use name=FWCore/MessageLogger>
+<use name=FWCore/ParameterSet>
+<use name=FWCore/PluginManager>
+<use name=FWCore/Utilities>
+<use name=DataFormats/JetReco>
+<use name=DataFormats/METReco>
+<use name=DataFormats/Math>
+<use name=DataFormats/HepMCCandidate>
+<use name=PhysicsTools/HepMCCandAlgos>
+<use name=PhysicsTools/Utilities>
 <export></export>
 <library name=TauAnalysisGenSimTools_plugins file=*.cc>
   <use name=FWCore/Framework>

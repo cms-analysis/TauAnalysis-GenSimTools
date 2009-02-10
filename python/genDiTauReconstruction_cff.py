@@ -15,8 +15,8 @@ genLeptTauSelector.tauDaughtersPdgId = (11,13)
 # corrected genMet producer, it will be removed in the future
 from TauAnalysis.CandidateTools.diCandidatePairProducer_cfi import diTauProducer
 genDiTau = diTauProducer.clone()
-genDiTau.srcLeg1 = 'genHadrTauSelector'
-genDiTau.srcLeg2 = 'genLeptTauSelector'
+genDiTau.srcLeg1 = 'genLeptTauSelector'
+genDiTau.srcLeg2 = 'genHadrTauSelector'
 genDiTau.srcMET = 'genMETWithMu'
 
 genDiTauReconstruction = cms.Sequence(

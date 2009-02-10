@@ -4,13 +4,13 @@ import FWCore.ParameterSet.Config as cms
 from TauAnalysis.GenSimTools.gen_decaysFromZs_cfi import decaysFromZs
 
 # generic
-from TauAnalysis.CandidateTools.diTauProducer_cfi import diTauProducer
+from TauAnalysis.CandidateTools.diCandidatePairProducer_cfi import diTauProducer
 genZll = diTauProducer.clone()
-genZll.hadronicTaus = 'decaysFromZs'
-genZll.leptonicTaus = 'decaysFromZs'
-genZll.METs = ''
-genZll.metMode = 1
-genZll.useLeadingTaus = False
+genZll.srcLeg1 = 'decaysFromZs'
+genZll.srcLeg2 = 'decaysFromZs'
+genZll.srcMET = ''
+genZll.recoMode = ''
+genZll.useLeadingTausOnly = False
 
 genZllReconstruction = cms.Sequence(
     decaysFromZs *

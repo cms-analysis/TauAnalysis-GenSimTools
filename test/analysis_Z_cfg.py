@@ -28,7 +28,7 @@ process.load("TauAnalysis.GenSimTools.genDiTauReconstruction_cff")
 process.load("TauAnalysis.GenSimTools.genZllReconstruction_cff")
 
 
-process.genZll.verbose = True
+process.genZll.verbosity = 1
 
 process.p1 = cms.Path(
     process.genParticles + 
@@ -57,7 +57,7 @@ process.load("FWCore.MessageLogger.MessageLogger_cfi")
 process.MessageLogger.cerr.threshold = 'INFO'
 process.MessageLogger.categories.append('PATLayer0Summary')
 process.MessageLogger.cerr.INFO = cms.untracked.PSet(
-    default          = cms.untracked.PSet( limit = cms.untracked.int32(0)  ),
+    default          = cms.untracked.PSet( limit = cms.untracked.int32(0) ),
     PATLayer0Summary = cms.untracked.PSet( limit = cms.untracked.int32(10) )
 )
 process.options   = cms.untracked.PSet( wantSummary = cms.untracked.bool(False) )

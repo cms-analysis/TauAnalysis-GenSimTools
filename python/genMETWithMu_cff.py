@@ -13,3 +13,5 @@ import RecoMET.METProducers.genMet_cfi
 genMETWithMu = RecoMET.METProducers.genMet_cfi.genMet.clone() 
 genMETWithMu.src = cms.InputTag("genCandidatesForMETWithMu") ## Output MET type
 genMETWithMu.alias = cms.string('GenMETWithMu') ## Alias  for FWLite
+
+produceGenMETwithMu = cms.Sequence(genCandidatesForMETWithMu * genMETWithMu) 

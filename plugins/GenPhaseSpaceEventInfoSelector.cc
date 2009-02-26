@@ -14,9 +14,10 @@ GenPhaseSpaceEventInfoSelector::GenPhaseSpaceEventInfoSelector(const edm::Parame
 
   std::string cut_string = cfg.getParameter<std::string>("cut");
   if ( cut_string != "" ) {
+    edm::LogInfo ("GenPhaseSpaceEventInfoSelector") << " Setting cut string = " << cut_string << " .";
     cut_ = new StringCutObjectSelector<GenPhaseSpaceEventInfo>(cut_string);
   } else {
-    edm::LogWarning ("GenPhaseSpaceEventInfoSelector") << " Empty cut string --> no Events will be rejected !!";
+    edm::LogInfo ("GenPhaseSpaceEventInfoSelector") << " Empty cut string --> no Events will be rejected !!";
     cut_ = 0;
   }
   //std::cout << " cut_string = " << cut_string << std::endl;

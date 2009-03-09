@@ -1,32 +1,38 @@
 import FWCore.ParameterSet.Config as cms
 
+## generator specific 
+# genMET config (it will be removed in the future)
+from TauAnalysis.GenSimTools.genMETWithMu_cff import *
 
+# GenTauJets producer
 from PhysicsTools.JetMCAlgos.TauGenJets_cfi import tauGenJets
 
-# generator specific 
-from TauAnalysis.GenSimTools.genMETWithMu_cff import *
-from TauAnalysis.GenSimTools.genTauDecaySelector_cfi import genTauDecaySelector
-from TauAnalysis.GenSimTools.genTauPairDecayFilter_cfi import genTauPairDecayFilter
-# by default, genTauDecaySelector selects hadronic taus
-genHadrTauSelector = genTauDecaySelector.clone()
-genLeptTauSelector = genTauDecaySelector.clone()
-genLeptTauSelector.tauDaughtersPdgId = (11,13)
+# import config for selection of generated tau-jets
+from TauAnalysis.GenSimTools.tauGenJetSelector_cfi import *
 
-# corrected genMet producer, it will be removed in the future
+# import config for count filter
+from TauAnalysis.CandidateTools.candidateCountFilter_cfi import candidateCountFilter
+atLeastOneGenTauToMuon = candidateCountFilter.clone()
+atLeastOneGenTauToMuon.src = 'selectedGenTauDecaysToMuon'
+atLeastOneGenTauToMuon.minNumber = 1
+atLeastOneGenTauToHadrons = candidateCountFilter.clone()
+atLeastOneGenTauToHadrons.src = 'selectedGenTauDecaysToHadrons'
+atLeastOneGenTauToHadrons.minNumber = 1
+
+## diTau producer
 from TauAnalysis.CandidateTools.diCandidatePairProducer_cfi import diTauProducer
 genDiTau = diTauProducer.clone()
-genDiTau.srcLeg1 = 'genLeptTauSelector'
-genDiTau.srcLeg2 = 'genHadrTauSelector'
+genDiTau.srcLeg1 = 'selectedGenTauDecaysToMuon'
+genDiTau.srcLeg2 = 'selectedGenTauDecaysToHadrons'
 genDiTau.srcMET = 'genMETWithMu'
 
 genDiTauReconstruction = cms.Sequence(
     tauGenJets *
-    genTauPairDecayFilter *
+    selectedGenTauDecaysToMuon *
+    selectedGenTauDecaysToHadrons *
+    atLeastOneGenTauToMuon *
+    atLeastOneGenTauToHadrons *
     genCandidatesForMETWithMu *
     genMETWithMu *
-    genLeptTauSelector *
-    genHadrTauSelector *
     genDiTau
     )
-
-

@@ -4,8 +4,9 @@ import FWCore.ParameterSet.Config as cms
 TauAnalysisGenSimToolsEC = cms.PSet(
     outputCommands = cms.untracked.vstring(
     'keep *_tauGenJets_*_*',
-    'keep *_genHadrTauSelector_*_*',
-    'keep *_genLeptTauSelector_*_*',
+    'keep *_selectedGenTauDecaysToMuon_*_*',
+    'keep *_selectedGenTauDecaysToElectron_*_*',
+    'keep *_selectedGenTauDecaysToHadrons_*_*',
     'keep *_genMETWithMu_*_*',
     'keep *_genMETFromNeutrals_*_*',
     'keep *_genDiTau_*_*',

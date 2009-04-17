@@ -2,7 +2,7 @@ import FWCore.ParameterSet.Config as cms
 
 from Configuration.GenProduction.PythiaUESettings_cfi import *
 # for every process including tau should be use TAUOLA
-from TauAnalysis.GenSim.Sources.TauolaSettings_mumu_cff import *
+from TauAnalysis.GenSimTools.Sources.TauolaSettings_mumu_cff import *
 
 source = cms.Source(
     "PythiaSource",

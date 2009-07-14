@@ -57,8 +57,8 @@ process.o1 = cms.OutputModule("PoolOutputModule",
     SelectEvents = cms.untracked.PSet(
         SelectEvents = cms.vstring('p1')
     ),
-    fileName = cms.untracked.string("/home/sdas/FastSimProduction/QCD_PtTrack15_FASTSIM_5000.root")
-    #fileName = cms.untracked.string("QCD_PtTrack15_FASTSIM.root")
+    #fileName = cms.untracked.string("/home/sdas/FastSimProduction/QCD_PtTrack15_FASTSIM_5000.root")
+    fileName = cms.untracked.string("QCD_PtTrack15_FASTSIM.root")
 )
 
 process.outpath = cms.EndPath(process.o1)

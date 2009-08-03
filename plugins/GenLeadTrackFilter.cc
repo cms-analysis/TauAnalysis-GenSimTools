@@ -13,7 +13,7 @@
 //
 // Original Author:  Souvik DAS
 //         Created:  Mon Jul  6 16:21:48 CEST 2009
-// $Id: GenLeadTrackFilter.cc,v 1.3 2009/07/13 12:44:43 sdas Exp $
+// $Id: GenLeadTrackFilter.cc,v 1.1 2009/07/14 12:28:26 sdas Exp $
 //
 //
 
@@ -30,7 +30,7 @@
 #include "FWCore/Framework/interface/MakerMacros.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 
-#include "SimDataFormats/HepMCProduct/interface/HepMCProduct.h"
+#include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
 #include "SimGeneral/HepPDTRecord/interface/ParticleDataTable.h"
 
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"

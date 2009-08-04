@@ -10,7 +10,7 @@
  *
  * \version $Revision: 1.1 $
  *
- * $Id: GenPhaseSpaceEventSelector.h,v 1.1 2009/01/23 14:58:12 veelken Exp $
+ * $Id: GenPhaseSpaceEventInfoSelector.h,v 1.1 2009/02/24 14:13:51 veelken Exp $
  *
  */
 
@@ -19,7 +19,7 @@
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ParameterSet/interface/InputTag.h"
 
-#include "PhysicsTools/Utilities/interface/StringCutObjectSelector.h"
+#include "CommonTools/Utils/interface/StringCutObjectSelector.h"
 
 #include "AnalysisDataFormats/TauAnalysis/interface/GenPhaseSpaceEventInfo.h"
 

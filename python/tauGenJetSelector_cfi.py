@@ -17,7 +17,7 @@ selectedGenTauDecaysToElectron = cms.EDFilter("TauGenJetDecayModeSelector",
 )
 
 # require generator level muon produced in tau-decay to be within muon acceptance
-selectedGenTauDecaysToElectronEta21Cumulative = cms.EDFilter("TauGenJetSelector",
+selectedGenTauDecaysToElectronEta21Cumulative = cms.EDFilter("GenJetSelector",
      src = cms.InputTag("selectedGenTauDecaysToElectron"),
      cut = cms.string('abs(eta) < 2.1'),
      filter = cms.bool(False)
@@ -27,7 +27,7 @@ selectedGenTauDecaysToElectronEta21Individual = copy.deepcopy(selectedGenTauDeca
 selectedGenTauDecaysToElectronEta21Individual.src = selectedGenTauDecaysToElectron.src
 
 # require generator level muon produced in tau-decay to have transverse momentum above threshold
-selectedGenTauDecaysToElectronPt15Cumulative = cms.EDFilter("TauGenJetSelector",
+selectedGenTauDecaysToElectronPt15Cumulative = cms.EDFilter("GenJetSelector",
      src = cms.InputTag("selectedGenTauDecaysToElectronEta21Cumulative"),
      cut = cms.string('pt > 15.'),
      filter = cms.bool(False)
@@ -48,7 +48,7 @@ selectedGenTauDecaysToMuon = cms.EDFilter("TauGenJetDecayModeSelector",
 )
 
 # require generator level muon produced in tau-decay to be within muon acceptance
-selectedGenTauDecaysToMuonEta21Cumulative = cms.EDFilter("TauGenJetSelector",
+selectedGenTauDecaysToMuonEta21Cumulative = cms.EDFilter("GenJetSelector",
      src = cms.InputTag("selectedGenTauDecaysToMuon"),
      cut = cms.string('abs(eta) < 2.1'),
      filter = cms.bool(False)
@@ -58,7 +58,7 @@ selectedGenTauDecaysToMuonEta21Individual = copy.deepcopy(selectedGenTauDecaysTo
 selectedGenTauDecaysToMuonEta21Individual.src = selectedGenTauDecaysToMuon.src
 
 # require generator level muon produced in tau-decay to have transverse momentum above threshold
-selectedGenTauDecaysToMuonPt15Cumulative = cms.EDFilter("TauGenJetSelector",
+selectedGenTauDecaysToMuonPt15Cumulative = cms.EDFilter("GenJetSelector",
      src = cms.InputTag("selectedGenTauDecaysToMuonEta21Cumulative"),
      cut = cms.string('pt > 15.'),
      filter = cms.bool(False)
@@ -80,7 +80,7 @@ selectedGenTauDecaysToHadrons = cms.EDFilter("TauGenJetDecayModeSelector",
 )
 
 # require generator level hadrons produced in tau-decay to be within muon acceptance
-selectedGenTauDecaysToHadronsEta21Cumulative = cms.EDFilter("TauGenJetSelector",
+selectedGenTauDecaysToHadronsEta21Cumulative = cms.EDFilter("GenJetSelector",
      src = cms.InputTag("selectedGenTauDecaysToHadrons"),
      cut = cms.string('abs(eta) < 2.1'),
      filter = cms.bool(False)
@@ -90,7 +90,7 @@ selectedGenTauDecaysToHadronsEta21Individual = copy.deepcopy(selectedGenTauDecay
 selectedGenTauDecaysToHadronsEta21Individual.src = selectedGenTauDecaysToHadrons.src
 
 # require generator level hadrons produced in tau-decay to have transverse momentum above threshold
-selectedGenTauDecaysToHadronsPt20Cumulative = cms.EDFilter("TauGenJetSelector",
+selectedGenTauDecaysToHadronsPt20Cumulative = cms.EDFilter("GenJetSelector",
      src = cms.InputTag("selectedGenTauDecaysToHadronsEta21Cumulative"),
      cut = cms.string('pt > 20.'),
      filter = cms.bool(False)

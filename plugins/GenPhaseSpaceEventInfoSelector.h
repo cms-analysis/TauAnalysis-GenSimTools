@@ -8,9 +8,9 @@
  * 
  * \author Christian Veelken, UC Davis
  *
- * \version $Revision: 1.1 $
+ * \version $Revision: 1.1.2.1 $
  *
- * $Id: GenPhaseSpaceEventSelector.h,v 1.1 2009/01/23 14:58:12 veelken Exp $
+ * $Id: GenPhaseSpaceEventInfoSelector.h,v 1.1.2.1 2009/08/04 10:29:32 mbluj Exp $
  *
  */
 
@@ -19,7 +19,7 @@
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ParameterSet/interface/InputTag.h"
 
-#include "PhysicsTools/Utilities/interface/StringCutObjectSelector.h"
+#include "CommonTools/Utils/interface/StringCutObjectSelector.h"
 
 #include "AnalysisDataFormats/TauAnalysis/interface/GenPhaseSpaceEventInfo.h"
 

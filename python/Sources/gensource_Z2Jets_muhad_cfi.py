@@ -27,8 +27,8 @@ generator.ExternalDecays = cms.PSet(
         InputCards = cms.PSet(
            pjak1 = cms.int32(0),
            pjak2 = cms.int32(0),
-           mdtau = cms.int32(116)  #mdtau = 0 all decays
-           #mdtau = cms.int32(116)  #mdtau = 116 - ONE mu+-, other taus -> all channels
+           #mdtau = cms.int32(116)  #mdtau = 0 all decays
+           mdtau = cms.int32(116)  #mdtau = 116 - ONE mu+-, other taus -> all channels
         )
     ),
     parameterSets = cms.vstring('Tauola')

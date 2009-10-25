@@ -1,9 +1,6 @@
 import FWCore.ParameterSet.Config as cms
 
 ## generator specific 
-# genMET config (it will be removed in the future)
-from TauAnalysis.GenSimTools.genMETWithMu_cff import *
-
 # GenTauJets producer
 from PhysicsTools.JetMCAlgos.TauGenJets_cfi import tauGenJets
 
@@ -24,7 +21,7 @@ from TauAnalysis.CandidateTools.diCandidatePairProducer_cfi import diTauProducer
 genDiTau = diTauProducer.clone()
 genDiTau.srcLeg1 = 'selectedGenTauDecaysToMuon'
 genDiTau.srcLeg2 = 'selectedGenTauDecaysToHadrons'
-genDiTau.srcMET = 'genMETWithMu'
+genDiTau.srcMET = 'genMetTrue'
 
 genDiTauReconstruction = cms.Sequence(
     tauGenJets *
@@ -32,7 +29,5 @@ genDiTauReconstruction = cms.Sequence(
     selectedGenTauDecaysToHadrons *
     atLeastOneGenTauToMuon *
     atLeastOneGenTauToHadrons *
-    genCandidatesForMETWithMu *
-    genMETWithMu *
     genDiTau
     )

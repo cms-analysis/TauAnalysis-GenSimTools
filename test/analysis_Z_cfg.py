@@ -2,18 +2,24 @@
 
 import FWCore.ParameterSet.Config as cms
 
+# Choose analysis mode:
+# 0: Z->mu,mu 
+# 1: Z->tau,tau->mu,tau-jet
+mode = 0
 
 process = cms.Process("ANA")
 
 process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(500) )
 
+if mode==0:
+    print "*** Z->mu,mu gen-analysis ***"
+    process.load("Configuration.Generator.ZMM_cfi")
+else:
+    print "*** Z->tau,tau->mu,tau-jet gen-analysis ***"
+    process.load("Configuration.Generator.ZTT_Tauola_OneLepton_OtherHadrons_cfi")
+    process.generator.ExternalDecays.Tauola.InputCards.mdtau = 116
 
-#process.source = cms.Source("PoolSource",
-#                            fileNames = cms.untracked.vstring('file:PATLayer1_ZToTaus.root')
-#                            fileNames = cms.untracked.vstring('file:PATLayer1_fromAOD_ZtoMus.root')
-#                            )
-
-process.load("TauAnalysis.GenSimTools.Sources.gensource_ZtoMus_PYTHIA_cfi")
+process.load("FastSimulation.Configuration.RandomServiceInitialization_cff")
 
 # analysis
 process.load("TauAnalysis.GenSimTools.gen_cff")
@@ -24,18 +30,25 @@ process.load("TauAnalysis.GenSimTools.gen_cff")
 process.particleListDrawer.maxEventsToPrint = cms.untracked.int32(10)
 process.particleListDrawer.printOnlyHardInteraction = True
 
-process.load("TauAnalysis.GenSimTools.genDiTauReconstruction_cff")
-process.load("TauAnalysis.GenSimTools.genZllReconstruction_cff")
-
-
-process.genZll.verbosity = 1
-
+if mode==0:
+    process.load("TauAnalysis.GenSimTools.genZllReconstruction_cff")
+    process.genZll.verbosity = 1
+else:
+    process.load("TauAnalysis.GenSimTools.genDiTauReconstruction_cff")
+    process.genDiTau.verbosity = 0
+    
 process.p1 = cms.Path(
-    process.genParticles + 
-    process.genParticlesPrint +
-#    process.genDiTauReconstruction + 
-    process.genZllReconstruction
+    process.ProductionFilterSequence + 
+    process.genParticles +
+    process.genParticlesPrint
     )
+if mode==0:
+    process.p1 += process.genZllReconstruction
+else:
+    process.load("RecoMET.Configuration.GenMETParticles_cff")
+    process.load("RecoMET.METProducers.genMetTrue_cfi")
+    process.p1 += process.genParticlesForMETAllVisible*process.genMetTrue
+    process.p1 += process.genDiTauReconstruction
 
 
 process.out = cms.OutputModule("PoolOutputModule",
@@ -54,13 +67,5 @@ process.outpath = cms.EndPath( process.out )
 
 
 process.load("FWCore.MessageLogger.MessageLogger_cfi")
-process.MessageLogger.cerr.threshold = 'INFO'
-process.MessageLogger.categories.append('PATLayer0Summary')
-process.MessageLogger.cerr.INFO = cms.untracked.PSet(
-    default          = cms.untracked.PSet( limit = cms.untracked.int32(0) ),
-    PATLayer0Summary = cms.untracked.PSet( limit = cms.untracked.int32(10) )
-)
 process.options   = cms.untracked.PSet( wantSummary = cms.untracked.bool(False) )
-
-
 

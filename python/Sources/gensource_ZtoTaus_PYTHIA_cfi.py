@@ -1,6 +1,6 @@
 import FWCore.ParameterSet.Config as cms
 
-from Configuration.GenProduction.PythiaUESettings_cfi import *
+from Configuration.Generator.PythiaUESettings_cfi import *
 # for every process including tau should be use TAUOLA
 from GeneratorInterface.Pythia6Interface.TauolaSettings_cff import *
 

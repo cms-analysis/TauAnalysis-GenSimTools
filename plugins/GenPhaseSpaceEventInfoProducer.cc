@@ -6,6 +6,7 @@
 #include "DataFormats/Common/interface/View.h"
 
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
+#include "SimDataFormats/GeneratorProducts/interface/GenEventInfoProduct.h"
 
 #include "AnalysisDataFormats/TauAnalysis/interface/GenPhaseSpaceEventInfo.h"
 
@@ -13,8 +14,8 @@ GenPhaseSpaceEventInfoProducer::GenPhaseSpaceEventInfoProducer(const edm::Parame
 { 
   //std::cout << "<GenPhaseSpaceEventInfoProducer::GenPhaseSpaceEventInfoProducer>:" << std::endl;
 
-  srcGenEventScale_ = cfg.getParameter<edm::InputTag>("srcGenEventScale");
-  //std::cout << " srcGenEventScale = " << srcGenEventScale_ << std::endl;
+  srcGenEventInfo_ = cfg.getParameter<edm::InputTag>("srcGenEventInfo");
+  //std::cout << " srcGenEventInfo = " << srcGenEventInfo_ << std::endl;
 
   srcGenParticles_ = cfg.getParameter<edm::InputTag>("srcGenParticles");
   //std::cout << " srcGenParticles = " << srcGenParticles_ << std::endl;
@@ -50,11 +51,11 @@ void GenPhaseSpaceEventInfoProducer::produce(edm::Event& evt, const edm::EventSe
 // WARNING: defined only for Monte Carlo samples generated with Pythia
 //
   double ptHat = 0.;
-  edm::Handle<double> genEventScale;
-  evt.getByLabel(srcGenEventScale_, genEventScale);
-  if ( genEventScale.isValid() ) {
-    ptHat = (*genEventScale);
-    //std::cout << "Pt(hat) = " << ptHat << std::endl;
+  edm::Handle<GenEventInfoProduct> genEventInfo;
+  evt.getByLabel(srcGenEventInfo_, genEventInfo);
+  if ( genEventInfo.isValid() && genEventInfo->hasBinningValues() ) {
+    ptHat = genEventInfo->binningValues()[0];
+    //std::cout << " Pt(hat) = " << ptHat << std::endl;
   } else {
     ptHat = -1.;
   }
@@ -81,6 +82,7 @@ void GenPhaseSpaceEventInfoProducer::produce(edm::Event& evt, const edm::EventSe
   genPhaseSpaceEventInfo->leadingGenElectron_ = leadingGenElectron;
   genPhaseSpaceEventInfo->leadingGenMuon_ = leadingGenMuon;
   genPhaseSpaceEventInfo->leadingGenTauLepton_ = leadingGenTauLepton;
+  //std::cout << " leading gen. Muon Pt = " << leadingGenMuon.pt() << std::endl;
 
 //--- add GenPhaseSpaceEventInfo object to the event
   evt.put(genPhaseSpaceEventInfo);

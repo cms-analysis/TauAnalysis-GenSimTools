@@ -9,7 +9,7 @@
  *
  * \version $Revision: 1.1 $
  *
- * $Id: GenPhaseSpaceEventInfoProducer.h,v 1.1 2009/01/23 14:58:12 veelken Exp $
+ * $Id: GenPhaseSpaceEventInfoProducer.h,v 1.1 2009/02/24 14:13:51 veelken Exp $
  *
  */
 
@@ -32,7 +32,7 @@ class GenPhaseSpaceEventInfoProducer : public edm::EDProducer
  
  private:
   // source collection label
-  edm::InputTag srcGenEventScale_;
+  edm::InputTag srcGenEventInfo_;
   edm::InputTag srcGenParticles_;
 };
 

@@ -55,7 +55,6 @@ void GenPhaseSpaceEventInfoProducer::produce(edm::Event& evt, const edm::EventSe
   evt.getByLabel(srcGenEventInfo_, genEventInfo);
   if ( genEventInfo.isValid() && genEventInfo->hasBinningValues() ) {
     ptHat = genEventInfo->binningValues()[0];
-    //std::cout << " Pt(hat) = " << ptHat << std::endl;
   } else {
     ptHat = -1.;
   }
@@ -82,7 +81,6 @@ void GenPhaseSpaceEventInfoProducer::produce(edm::Event& evt, const edm::EventSe
   genPhaseSpaceEventInfo->leadingGenElectron_ = leadingGenElectron;
   genPhaseSpaceEventInfo->leadingGenMuon_ = leadingGenMuon;
   genPhaseSpaceEventInfo->leadingGenTauLepton_ = leadingGenTauLepton;
-  //std::cout << " leading gen. Muon Pt = " << leadingGenMuon.pt() << std::endl;
 
 //--- add GenPhaseSpaceEventInfo object to the event
   evt.put(genPhaseSpaceEventInfo);

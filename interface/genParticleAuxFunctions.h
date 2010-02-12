@@ -14,4 +14,7 @@ reco::Particle::LorentzVector getGenVisibleTauMomentum(const reco::CompositePtrC
 
 reco::Particle::LorentzVector getGenMissingTransverseMomentum(edm::Handle<edm::View<reco::GenParticle> >& genParticles);
 
+int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector&, edm::Handle<reco::GenParticleCollection>&, 
+				const std::vector<int>* = 0);
+
 #endif

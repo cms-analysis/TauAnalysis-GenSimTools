@@ -1,7 +1,7 @@
 import FWCore.ParameterSet.Config as cms
 
 # generator specific
-from TauAnalysis.GenSimTools.gen_decaysFromZs_cfi import decaysFromZs
+from TauAnalysis.GenSimTools.gen_decaysFromZs_cfi import produceGenDecayProductsFromZs
 
 # generic
 from TauAnalysis.CandidateTools.diCandidatePairProducer_cfi import diTauProducer
@@ -13,7 +13,7 @@ genZll.recoMode = ''
 genZll.useLeadingTausOnly = False
 
 genZllReconstruction = cms.Sequence(
-    decaysFromZs *
+    produceGenDecayProductsFromZs *
     genZll
     )
 

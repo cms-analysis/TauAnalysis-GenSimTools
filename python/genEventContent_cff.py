@@ -10,7 +10,9 @@ TauAnalysisGenSimToolsEC = cms.PSet(
     'keep *_genMetTrue_*_*',
     'keep *_genMETFromNeutrals_*_*',
     'keep *_genDiTau_*_*',
-    'keep *_decaysFromZs_*_*',
+    'keep *_genElectronsFromZs_*_*',
+    'keep *_genMuonsFromZs_*_*',
+    'keep *_genTausFromZs_*_*',
     'keep *_genZll_*_*'
     )
 )

@@ -5,6 +5,8 @@
 #include "DataFormats/Common/interface/Handle.h"
 #include "DataFormats/Common/interface/View.h"
 
+#include "CommonTools/UtilAlgos/interface/EventSelectorBase.h"
+
 GenPhaseSpaceEventInfoSelector::GenPhaseSpaceEventInfoSelector(const edm::ParameterSet& cfg)
 { 
   //std::cout << "<GenPhaseSpaceEventInfoSelector::GenPhaseSpaceEventInfoSelector>:" << std::endl;

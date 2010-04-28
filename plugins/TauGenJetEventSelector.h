@@ -1,13 +1,13 @@
 //
-// $Id: TauGenJetEventSelector.h,v 1.1 2009/01/21 16:59:06 veelken Exp $
+// $Id: TauGenJetEventSelector.h,v 1.1 2009/01/21 17:32:25 veelken Exp $
 //
 
 #ifndef TauAnalysis_GenSimTools_TauGenJetEventSelector_h
 #define TauAnalysis_GenSimTools_TauGenJetEventSelector_h
 
-#include "PhysicsTools/UtilAlgos/interface/AnySelector.h"
-#include "PhysicsTools/UtilAlgos/interface/ObjectCountEventSelector.h"
-#include "PhysicsTools/UtilAlgos/interface/MinNumberSelector.h"
+#include "CommonTools/UtilAlgos/interface/AnySelector.h"
+#include "CommonTools/UtilAlgos/interface/ObjectCountEventSelector.h"
+#include "CommonTools/UtilAlgos/interface/MinNumberSelector.h"
 #include "PhysicsTools/PatUtils/interface/MaxNumberSelector.h"
 
 #include "DataFormats/JetReco/interface/GenJet.h"

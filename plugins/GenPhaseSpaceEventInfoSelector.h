@@ -8,9 +8,9 @@
  * 
  * \author Christian Veelken, UC Davis
  *
- * \version $Revision: 1.1.2.1 $
+ * \version $Revision: 1.2 $
  *
- * $Id: GenPhaseSpaceEventInfoSelector.h,v 1.1.2.1 2009/08/04 10:29:32 mbluj Exp $
+ * $Id: GenPhaseSpaceEventInfoSelector.h,v 1.2 2009/10/25 12:38:18 veelken Exp $
  *
  */
 
@@ -23,7 +23,7 @@
 
 #include "AnalysisDataFormats/TauAnalysis/interface/GenPhaseSpaceEventInfo.h"
 
-#include "PhysicsTools/UtilAlgos/interface/EventSelectorBase.h"
+#include "CommonTools/UtilAlgos/interface/EventSelectorBase.h"
 
 class GenPhaseSpaceEventInfoSelector : public EventSelectorBase
 {

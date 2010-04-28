@@ -12,7 +12,7 @@
   <use name=PhysicsTools/HepMCCandAlgos>
   <use name=PhysicsTools/JetMCUtils>
   <use name=PhysicsTools/PatUtils>
-  <use name=PhysicsTools/UtilAlgos>
+  <use name=CommonTools/UtilAlgos>
   <use name=PhysicsTools/Utilities>
   <use name=TauAnalysis/CandidateTools>
   <use name=TauAnalysis/GenSimTools>

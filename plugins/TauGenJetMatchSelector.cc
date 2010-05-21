@@ -154,4 +154,4 @@ void TauGenJetMatchSelector::produce(edm::Event& evt, const edm::EventSetup& es)
 
 #include "FWCore/Framework/interface/MakerMacros.h"
 
-DEFINE_ANOTHER_FWK_MODULE(TauGenJetMatchSelector);
+DEFINE_FWK_MODULE(TauGenJetMatchSelector);

@@ -88,4 +88,4 @@ void GenPhaseSpaceEventInfoProducer::produce(edm::Event& evt, const edm::EventSe
 
 #include "FWCore/Framework/interface/MakerMacros.h"
 
-DEFINE_ANOTHER_FWK_MODULE(GenPhaseSpaceEventInfoProducer);
+DEFINE_FWK_MODULE(GenPhaseSpaceEventInfoProducer);

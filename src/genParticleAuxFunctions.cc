@@ -1,7 +1,7 @@
 #include "TauAnalysis/GenSimTools/interface/genParticleAuxFunctions.h"
 
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
-#include "FWCore/Framework/interface/TriggerNames.h"
+#include "FWCore/Common/interface/TriggerNames.h"
 
 #include "DataFormats/Math/interface/deltaR.h"
 

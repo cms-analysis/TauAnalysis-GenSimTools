@@ -7,8 +7,7 @@
 
 #include <TMath.h>
 
-reco::GenParticleCollection getStableDecayProducts(edm::Handle<edm::View<reco::GenParticle> >& genParticles, 
-						   const reco::GenParticle& genMother)
+reco::GenParticleCollection getStableDecayProducts(const reco::GenParticle& genMother)
 {
 //--- return set of stable particles associated with decay of particle given as function argument
   
@@ -21,7 +20,7 @@ reco::GenParticleCollection getStableDecayProducts(edm::Handle<edm::View<reco::G
     for ( size_t iDaughter = 0; iDaughter < numDaughters; ++iDaughter ) {
       const reco::GenParticle* genDaughter = dynamic_cast<const reco::GenParticle*>(genMother.daughter(iDaughter));
 //--- call function recursively for each "daughter" particle
-      reco::GenParticleCollection genDaughterDecayProducts = getStableDecayProducts(genParticles, *genDaughter);
+      reco::GenParticleCollection genDaughterDecayProducts = getStableDecayProducts(*genDaughter);
       genDecayProducts.insert(genDecayProducts.end(), genDaughterDecayProducts.begin(), genDaughterDecayProducts.end());
     }
   }
@@ -33,32 +32,11 @@ reco::GenParticleCollection getStableDecayProducts(edm::Handle<edm::View<reco::G
 //-----------------------------------------------------------------------------------------------------------------------
 //
 
-reco::Particle::LorentzVector getGenVisibleTauMomentum(const reco::CompositePtrCandidate& genTauJet)
-{
-  reco::Particle::LorentzVector genVisibleTauMomentum(0,0,0,0);
-
-  const reco::CompositePtrCandidate::daughters& genDecayProducts = genTauJet.daughterPtrVector();
-  for ( reco::CompositePtrCandidate::daughters::const_iterator genDecayProduct = genDecayProducts.begin();
- 	genDecayProduct != genDecayProducts.end(); ++genDecayProduct ) {
-
-//--- exclude electron, muon and tau neutrinos from visible energy/momentum calculation
-    if ( !((*genDecayProduct)->pdgId() == -12 || (*genDecayProduct)->pdgId() == +12 ||
-	   (*genDecayProduct)->pdgId() == -14 || (*genDecayProduct)->pdgId() == +14 ||
-	   (*genDecayProduct)->pdgId() == -16 || (*genDecayProduct)->pdgId() == +16) ) genVisibleTauMomentum += (*genDecayProduct)->p4();
-  }
-
-  return genVisibleTauMomentum;
-}
-
-//
-//-----------------------------------------------------------------------------------------------------------------------
-//
-
-reco::Particle::LorentzVector getGenMissingTransverseMomentum(edm::Handle<edm::View<reco::GenParticle> >& genParticles)
+reco::Particle::LorentzVector getGenMissingTransverseMomentum(const reco::GenParticleCollection& genParticles)
 {
   reco::Particle::LorentzVector genMissingTransverseMomentum(0,0,0,0);
-  for ( edm::View<reco::GenParticle>::const_iterator genParticle = genParticles->begin(); 
-	genParticle != genParticles->end(); ++genParticle ) {
+  for ( reco::GenParticleCollection::const_iterator genParticle = genParticles.begin(); 
+	genParticle != genParticles.end(); ++genParticle ) {
     const reco::Particle::LorentzVector& genParticleMomentum = genParticle->p4();
     int pdgId = genParticle->pdgId();
     
@@ -77,15 +55,15 @@ reco::Particle::LorentzVector getGenMissingTransverseMomentum(edm::Handle<edm::V
 //
 
 int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector& recoMomentum,
-				edm::Handle<reco::GenParticleCollection>& genParticleCollection,
+				const reco::GenParticleCollection& genParticleCollection,
 				const std::vector<int>* skipPdgIds)
 {
 //--- select genParticles matching direction of reconstructed particle
 //    within cone of size dR = 0.5;
 //    require generated transverse momentum to be at least half of reconstructed transverse momentum
   reco::GenParticleCollection matchingGenParticles;
-  for ( reco::GenParticleCollection::const_iterator genParticle = genParticleCollection->begin(); 
-	genParticle != genParticleCollection->end(); ++genParticle ) {
+  for ( reco::GenParticleCollection::const_iterator genParticle = genParticleCollection.begin(); 
+	genParticle != genParticleCollection.end(); ++genParticle ) {
 
 //--- skip "documentation line" entries
 //    (copied over to reco::GenParticle from HepMC product)

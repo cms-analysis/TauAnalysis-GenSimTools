@@ -55,8 +55,8 @@ reco::Particle::LorentzVector getGenMissingTransverseMomentum(const reco::GenPar
 //
 
 int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector& recoMomentum,
-				const reco::GenParticleCollection& genParticleCollection,
-				const std::vector<int>* skipPdgIds)
+				edm::Handle<reco::GenParticleCollection>& genParticleCollection,
+				const std::vector<int>* skipPdgIds, bool useStatusTwoParticles)
 {
 //--- select genParticles matching direction of reconstructed particle
 //    within cone of size dR = 0.5;
@@ -67,7 +67,10 @@ int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector& recoMomentu
 
 //--- skip "documentation line" entries
 //    (copied over to reco::GenParticle from HepMC product)
-    if ( genParticle->status() == 3 ) continue;
+		if ( genParticle->status() == 3 && useStatusTwoParticles) continue;
+//--- exclude status = 2 particles (i.e. taus) so that tau daughter is matched
+		if ( genParticle->status() > 1 && !useStatusTwoParticles) continue;
+
 
 //--- skip "invisible" particles (e.g. neutrinos);
 //    configurable via list of pdgIds given as function argument

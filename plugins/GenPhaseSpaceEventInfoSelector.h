@@ -8,16 +8,16 @@
  * 
  * \author Christian Veelken, UC Davis
  *
- * \version $Revision: 1.2 $
+ * \version $Revision: 1.3 $
  *
- * $Id: GenPhaseSpaceEventInfoSelector.h,v 1.2 2009/10/25 12:38:18 veelken Exp $
+ * $Id: GenPhaseSpaceEventInfoSelector.h,v 1.3 2010/04/28 14:50:17 jkolb Exp $
  *
  */
 
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/EventSetup.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
-#include "FWCore/ParameterSet/interface/InputTag.h"
+#include "FWCore/Utilities/interface/InputTag.h"
 
 #include "CommonTools/Utils/interface/StringCutObjectSelector.h"
 

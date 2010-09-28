@@ -7,9 +7,9 @@
  * 
  * \author Christian Veelken, UC Davis
  *
- * \version $Revision: 1.1 $
+ * \version $Revision: 1.2 $
  *
- * $Id: GenPhaseSpaceEventInfoProducer.h,v 1.1 2009/02/24 14:13:51 veelken Exp $
+ * $Id: GenPhaseSpaceEventInfoProducer.h,v 1.2 2010/01/25 17:25:16 veelken Exp $
  *
  */
 
@@ -19,7 +19,7 @@
 #include "FWCore/Framework/interface/EventSetup.h"
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
-#include "FWCore/ParameterSet/interface/InputTag.h"
+#include "FWCore/Utilities/interface/InputTag.h"
 
 class GenPhaseSpaceEventInfoProducer : public edm::EDProducer 
 {

@@ -9,7 +9,7 @@
  *
  * \version $Revision: 1.1 $
  *
- * $Id: TauGenJetMatchSelector.h,v 1.1 2009/02/24 14:13:51 veelken Exp $
+ * $Id: TauGenJetMatchSelector.h,v 1.1 2010/01/20 09:14:08 veelken Exp $
  *
  */
 
@@ -19,7 +19,7 @@
 #include "FWCore/Framework/interface/EventSetup.h"
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
-#include "FWCore/ParameterSet/interface/InputTag.h"
+#include "FWCore/Utilities/interface/InputTag.h"
 
 class TauGenJetMatchSelector : public edm::EDProducer 
 {

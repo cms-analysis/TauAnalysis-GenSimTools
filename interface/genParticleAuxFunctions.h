@@ -11,7 +11,7 @@ reco::GenParticleCollection getStableDecayProducts(const reco::GenParticle& genM
 
 reco::Particle::LorentzVector getGenMissingTransverseMomentum(const reco::GenParticleCollection& genParticles);
 
-int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector&, reco::GenParticleCollection&, 
+int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector&, const reco::GenParticleCollection&, 
 				const std::vector<int>* = 0, bool useStatusTwoParticles = false);
 
 #endif

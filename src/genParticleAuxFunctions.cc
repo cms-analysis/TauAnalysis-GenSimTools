@@ -55,7 +55,7 @@ reco::Particle::LorentzVector getGenMissingTransverseMomentum(const reco::GenPar
 //
 
 int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector& recoMomentum,
-				edm::Handle<reco::GenParticleCollection>& genParticleCollection,
+				const reco::GenParticleCollection& genParticleCollection,
 				const std::vector<int>* skipPdgIds, bool useStatusTwoParticles)
 {
 //--- select genParticles matching direction of reconstructed particle

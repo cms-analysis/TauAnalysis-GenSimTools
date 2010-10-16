@@ -2,7 +2,13 @@ import FWCore.ParameterSet.Config as cms
 
 #--------------------------------------------------------------------------------
 # select collections of generated electrons, muons and tau leptons
-# resulting from Z-boson decays
+# resulting from Z boson decays
+#
+# NOTE:
+#       (1) names of particles are defined in SimGeneral/HepPDTESSource/data/pythiaparticle.tbl
+#       (2) for more information about the GenParticlePruner module, see
+#             https://twiki.cern.ch/twiki/bin/view/CMS/SWGuideGenParticlePruner
+#
 #--------------------------------------------------------------------------------
 
 genParticlesFromZs = cms.EDProducer("GenParticlePruner",
@@ -42,7 +48,7 @@ genTausFromZs = cms.EDProducer("GenParticlePruner",
 )
 
 #--------------------------------------------------------------------------------
-# match tau leptons resulting from Z-boson decays to generator level tau-jets
+# match tau leptons resulting from Z boson decays to generator level tau-jets
 #--------------------------------------------------------------------------------
 
 genTauJetsFromZs = cms.EDProducer("TauGenJetMatchSelector",
@@ -109,7 +115,7 @@ genElectronsFromZtautauDecaysWithinAcceptance = cms.EDFilter("GenJetSelector",
 
 genMuonsFromZtautauDecaysWithinAcceptance = cms.EDFilter("GenJetSelector",
   src = cms.InputTag("genMuonsFromZtautauDecays"),
-  cut = cms.string('pt > 15. && abs(eta) < 2.1')
+  cut = cms.string('pt > 10. && abs(eta) < 2.1')
 )
 
 genHadronsFromZtautauDecaysWithinAcceptance = cms.EDFilter("GenJetSelector",

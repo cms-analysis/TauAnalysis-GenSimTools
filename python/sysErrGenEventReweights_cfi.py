@@ -44,7 +44,7 @@ fsrWeight = cms.EDProducer("FSRWeightProducer",
 )
 
 produceSysErrGenEventReweights = cms.Sequence(
-    pdfWeights
-   + isrWeight
+    ##pdfWeights
+    isrWeight
    + fsrWeight
 )

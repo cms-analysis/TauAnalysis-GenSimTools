@@ -6,9 +6,7 @@ import FWCore.ParameterSet.Config as cms
 pdfWeights = cms.EDProducer("PdfWeightProducer",
     PdfInfoTag = cms.untracked.InputTag("generator"),
     PdfSetNames = cms.untracked.vstring(
-        "cteq65.LHgrid"
-       #, "MRST2006nnlo.LHgrid"
-       #, "MRST2007lomod.LHgrid"
+        "cteq66.LHgrid"
     )
 )
 

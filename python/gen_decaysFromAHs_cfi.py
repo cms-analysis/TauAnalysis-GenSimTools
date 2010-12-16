@@ -119,12 +119,12 @@ genElectronsFromAHtautauDecaysWithinAcceptance = cms.EDFilter("GenJetSelector",
 
 genMuonsFromAHtautauDecaysWithinAcceptance = cms.EDFilter("GenJetSelector",
   src = cms.InputTag("genMuonsFromAHtautauDecays"),
-  cut = cms.string('pt > 10. && abs(eta) < 2.1')
+  cut = cms.string('pt > 15. && abs(eta) < 2.1')
 )
 
 genHadronsFromAHtautauDecaysWithinAcceptance = cms.EDFilter("GenJetSelector",
   src = cms.InputTag("genHadronsFromAHtautauDecays"),
-  cut = cms.string('pt > 20. && abs(eta) < 2.1')
+  cut = cms.string('pt > 20. && abs(eta) < 2.3')
 )
 
 produceGenDecayProductsFromAHs = cms.Sequence(

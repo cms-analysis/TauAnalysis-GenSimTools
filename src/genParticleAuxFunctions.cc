@@ -10,7 +10,7 @@
 reco::GenParticleCollection getStableDecayProducts(const reco::GenParticle& genMother)
 {
 //--- return set of stable particles associated with decay of particle given as function argument
-  
+
   reco::GenParticleCollection genDecayProducts;
 
   if ( genMother.numberOfDaughters() == 0 ) { // particle given as function argument is stable
@@ -35,11 +35,11 @@ reco::GenParticleCollection getStableDecayProducts(const reco::GenParticle& genM
 reco::Particle::LorentzVector getGenMissingTransverseMomentum(const reco::GenParticleCollection& genParticles)
 {
   reco::Particle::LorentzVector genMissingTransverseMomentum(0,0,0,0);
-  for ( reco::GenParticleCollection::const_iterator genParticle = genParticles.begin(); 
+  for ( reco::GenParticleCollection::const_iterator genParticle = genParticles.begin();
 	genParticle != genParticles.end(); ++genParticle ) {
     const reco::Particle::LorentzVector& genParticleMomentum = genParticle->p4();
     int pdgId = genParticle->pdgId();
-    
+
     if ( pdgId == -12 || pdgId == +12 ||
          pdgId == -14 || pdgId == +14 ||
          pdgId == -16 || pdgId == +16 ) {
@@ -62,7 +62,7 @@ int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector& recoMomentu
 //    within cone of size dR = 0.5;
 //    require generated transverse momentum to be at least half of reconstructed transverse momentum
   reco::GenParticleCollection matchingGenParticles;
-  for ( reco::GenParticleCollection::const_iterator genParticle = genParticleCollection.begin(); 
+  for ( reco::GenParticleCollection::const_iterator genParticle = genParticleCollection.begin();
 	genParticle != genParticleCollection.end(); ++genParticle ) {
 
 //--- skip "documentation line" entries
@@ -93,12 +93,12 @@ int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector& recoMomentu
     }
   }
 
-//--- find highest Pt matching genParticle 
+//--- find highest Pt matching genParticle
   double ptMax = -1.;
   int pdgId = -1;
-  for ( reco::GenParticleCollection::const_iterator matchingGenParticle = matchingGenParticles.begin(); 
+  for ( reco::GenParticleCollection::const_iterator matchingGenParticle = matchingGenParticles.begin();
 	matchingGenParticle != matchingGenParticles.end(); ++matchingGenParticle ) {
-    
+
     if ( matchingGenParticle->pt() > ptMax ) {
       pdgId = matchingGenParticle->pdgId();
       ptMax = matchingGenParticle->pt();
@@ -107,4 +107,49 @@ int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector& recoMomentu
 
   return pdgId;
 }
+
+
+const reco::GenParticle* findMotherWithPdgId(
+    const reco::GenParticle* input, unsigned int absPdgId) {
+  if (!input) return NULL;
+  // Get list of mothers.  Not sure why this would be more than one.
+  size_t nMothers = input->numberOfMothers();
+  for (size_t i = 0; i < nMothers; ++i) {
+    const reco::GenParticle* mother = dynamic_cast<const reco::GenParticle*>(
+        input->mother(i));
+    if (mother) {
+      unsigned int motherId = std::abs(mother->pdgId());
+      if (motherId == absPdgId)
+        return mother;
+      else
+        return findMotherWithPdgId(mother, absPdgId);
+    }
+  }
+  // If this doesn't have any valid mother, return null
+  return NULL;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

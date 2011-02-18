@@ -11,52 +11,55 @@ import FWCore.ParameterSet.Config as cms
 #
 #--------------------------------------------------------------------------------
 
-genParticlesFromZs = cms.EDProducer("GenParticlePruner",
+genParticlesFromZs = cms.EDProducer("GenParticlesFromZsSelector",
     src = cms.InputTag("genParticles"),
-    select = cms.vstring(
-        "drop * ", # this is the default
-        "keep+ pdgId = {Z0}",
-        "drop pdgId = {Z0}"
-    )
+    pdgIdsMothers = cms.vint32(23, 22),
+    pdgIdsDaughters = cms.vint32(15, 13, 11),
+    maxDaughters = cms.int32(2),
+    minDaughters = cms.int32(2)
 )
 
-genElectronsFromZs = cms.EDProducer("GenParticlePruner",
-  src = cms.InputTag("genParticlesFromZs"),
-  select = cms.vstring(
-    "drop * ",
-    "keep pdgId = {e+}",
-    "keep pdgId = {e-}"
-  )
+genElectronsFromZs = cms.EDProducer("GenParticlesFromZsSelector",
+    src = cms.InputTag("genParticles"),
+    pdgIdsMothers = cms.vint32(23, 22),
+    pdgIdsDaughters = cms.vint32(11),
+    maxDaughters = cms.int32(2),
+    minDaughters = cms.int32(2)
 )
 
-genMuonsFromZs = cms.EDProducer("GenParticlePruner",
-  src = cms.InputTag("genParticlesFromZs"),
-  select = cms.vstring(
-    "drop * ",
-    "keep pdgId = {mu+}",
-    "keep pdgId = {mu-}"
-  )
+genMuonsFromZs = cms.EDProducer("GenParticlesFromZsSelector",
+    src = cms.InputTag("genParticles"),
+    pdgIdsMothers = cms.vint32(23, 22),
+    pdgIdsDaughters = cms.vint32(13),
+    maxDaughters = cms.int32(2),
+    minDaughters = cms.int32(2)
 )
 
-genTausFromZs = cms.EDProducer("GenParticlePruner",
-  src = cms.InputTag("genParticlesFromZs"),
-  select = cms.vstring(
-    "drop * ",
-    "keep pdgId = {tau+}",
-    "keep pdgId = {tau-}"
-  )
+genTausFromZs = cms.EDProducer("GenParticlesFromZsSelector",
+    src = cms.InputTag("genParticles"),
+    pdgIdsMothers = cms.vint32(23, 22),
+    pdgIdsDaughters = cms.vint32(15),
+    maxDaughters = cms.int32(2),
+    minDaughters = cms.int32(2)
 )
+
+genZdecayToTaus = cms.EDProducer("CandViewShallowCloneCombiner",
+    checkCharge = cms.bool(True),
+    cut = cms.string('charge = 0'),
+    decay = cms.string("genTausFromZs@+ genTausFromZs@-")
+)
+
 
 #--------------------------------------------------------------------------------
 # match tau leptons resulting from Z boson decays to generator level tau-jets
 #--------------------------------------------------------------------------------
 
 genTauJetsFromZs = cms.EDProducer("TauGenJetMatchSelector",
-  srcGenTauLeptons = cms.InputTag("genTausFromZs"),
-  srcGenParticles = cms.InputTag("genParticles"),
-  srcTauGenJets = cms.InputTag("tauGenJets"),
-  dRmatchGenParticle = cms.double(0.1),
-  dRmatchTauGenJet = cms.double(0.3)
+    srcGenTauLeptons = cms.InputTag("genTausFromZs"),
+    srcGenParticles = cms.InputTag("genParticles"),
+    srcTauGenJets = cms.InputTag("tauGenJets"),
+    dRmatchGenParticle = cms.double(0.1),
+    dRmatchTauGenJet = cms.double(0.3)
 )
 
 #--------------------------------------------------------------------------------
@@ -109,23 +112,24 @@ genHadronsFromZtautauDecays = cms.EDFilter("TauGenJetDecayModeSelector",
 #--------------------------------------------------------------------------------
 
 genElectronsFromZtautauDecaysWithinAcceptance = cms.EDFilter("GenJetSelector",
-  src = cms.InputTag("genElectronsFromZtautauDecays"),
-  cut = cms.string('pt > 15. && abs(eta) < 2.1')
+    src = cms.InputTag("genElectronsFromZtautauDecays"),
+    cut = cms.string('pt > 15. && abs(eta) < 2.1')
 )
 
 genMuonsFromZtautauDecaysWithinAcceptance = cms.EDFilter("GenJetSelector",
-  src = cms.InputTag("genMuonsFromZtautauDecays"),
-  cut = cms.string('pt > 15. && abs(eta) < 2.1')
+    src = cms.InputTag("genMuonsFromZtautauDecays"),
+    cut = cms.string('pt > 15. && abs(eta) < 2.1')
 )
 
 genHadronsFromZtautauDecaysWithinAcceptance = cms.EDFilter("GenJetSelector",
-  src = cms.InputTag("genHadronsFromZtautauDecays"),
-  cut = cms.string('pt > 20. && abs(eta) < 2.3')
+    src = cms.InputTag("genHadronsFromZtautauDecays"),
+    cut = cms.string('pt > 20. && abs(eta) < 2.3')
 )
 
 produceGenDecayProductsFromZs = cms.Sequence(
     genParticlesFromZs
    * genElectronsFromZs * genMuonsFromZs * genTausFromZs
+   * genZdecayToTaus
    * genTauJetsFromZs
    * genElectronsFromZtautauDecays * genElectronsFromZtautauDecaysWithinAcceptance
    * genMuonsFromZtautauDecays * genMuonsFromZtautauDecaysWithinAcceptance

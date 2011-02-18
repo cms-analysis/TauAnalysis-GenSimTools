@@ -108,25 +108,31 @@ int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector& recoMomentu
   return pdgId;
 }
 
+const reco::GenParticle* findMotherWithPdgId(const reco::GenParticle* genParticle, unsigned absPdgId) 
+{
+  // If this doesn't have any valid mother, return null
+  const reco::GenParticle* retVal = 0;
+  
+  if ( genParticle ) {
+    // Get list of mothers.  Not sure why this would be more than one.
+    size_t nGenMothers = genParticle->numberOfMothers();
+    for ( size_t iGenMother = 0; iGenMother < nGenMothers; ++iGenMother ) {
+      const reco::GenParticle* genMother = dynamic_cast<const reco::GenParticle*>(genParticle->mother(iGenMother));
+      if ( genMother ) {
+	unsigned genMotherPdgId = TMath::Abs(genMother->pdgId());
+	if ( genMotherPdgId == absPdgId ) {
+	  retVal = genMother;
+        } else {
+	  const reco::GenParticle* genGrandMother = findMotherWithPdgId(genMother, absPdgId);
+	  if ( genGrandMother != 0 ) retVal = genGrandMother;
+	}
+      }
 
-const reco::GenParticle* findMotherWithPdgId(
-    const reco::GenParticle* input, unsigned int absPdgId) {
-  if (!input) return NULL;
-  // Get list of mothers.  Not sure why this would be more than one.
-  size_t nMothers = input->numberOfMothers();
-  for (size_t i = 0; i < nMothers; ++i) {
-    const reco::GenParticle* mother = dynamic_cast<const reco::GenParticle*>(
-        input->mother(i));
-    if (mother) {
-      unsigned int motherId = std::abs(mother->pdgId());
-      if (motherId == absPdgId)
-        return mother;
-      else
-        return findMotherWithPdgId(mother, absPdgId);
+      if ( retVal != 0 ) break;
     }
   }
-  // If this doesn't have any valid mother, return null
-  return NULL;
+
+  return retVal;
 }
 
 

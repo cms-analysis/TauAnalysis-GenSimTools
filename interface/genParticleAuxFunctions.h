@@ -14,7 +14,6 @@ reco::Particle::LorentzVector getGenMissingTransverseMomentum(const reco::GenPar
 int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector&, const reco::GenParticleCollection&,
 				const std::vector<int>* = 0, bool useStatusTwoParticles = false);
 
-const reco::GenParticle* findMotherWithPdgId(
-    const reco::GenParticle* input, unsigned int absPdgId);
+const reco::GenParticle* findMotherWithPdgId(const reco::GenParticle* input, unsigned absPdgId);
 
 #endif

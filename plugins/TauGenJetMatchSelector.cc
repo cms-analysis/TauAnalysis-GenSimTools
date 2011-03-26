@@ -102,7 +102,7 @@ void TauGenJetMatchSelector::produce(edm::Event& evt, const edm::EventSetup& es)
       }
     }
 
-    reco::Candidate::LorentzVector genTauJetMomentum = getVisMomentum(matchedGenTauLepton, &(*genParticles));
+    reco::Candidate::LorentzVector genTauJetMomentum = getVisMomentum(matchedGenTauLepton);
 
     const reco::GenJet* matchedTauGenJet = 0;
     double dRmin = 1.e+3;

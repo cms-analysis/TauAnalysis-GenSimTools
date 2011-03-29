@@ -70,7 +70,7 @@ genTauJetsFromZs = cms.EDProducer("TauGenJetMatchSelector",
 # 
 # NOTE: list of individual tau decay modes to be used
 #       for 'select' configuation parameter of TauGenJetDecayModeSelector module
-#       define in PhysicsTools/JetMCUtils/src/JetMCTag.cc
+#       defined in PhysicsTools/JetMCUtils/src/JetMCTag.cc
 #--------------------------------------------------------------------------------
 
 genElectronsFromZtautauDecays = cms.EDFilter("TauGenJetDecayModeSelector",

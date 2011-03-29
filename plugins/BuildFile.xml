@@ -1,0 +1,23 @@
+<export>
+</export>
+<library   name="TauAnalysisGenSimTools_plugins" file="*.cc">
+  <use   name="FWCore/Framework"/>
+  <use   name="FWCore/MessageLogger"/>
+  <use   name="FWCore/ParameterSet"/>
+  <use   name="FWCore/PluginManager"/>
+  <use   name="FWCore/Utilities"/>
+  <use   name="DQMServices/Core"/>
+  <use   name="DataFormats/HepMCCandidate"/>
+  <use   name="DataFormats/JetReco"/>
+  <use   name="DataFormats/METReco"/>
+  <use   name="DataFormats/Math"/>
+  <use   name="PhysicsTools/HepMCCandAlgos"/>
+  <use   name="PhysicsTools/JetMCUtils"/>
+  <use   name="PhysicsTools/PatUtils"/>
+  <use   name="CommonTools/UtilAlgos"/>
+  <use   name="CommonTools/Utils"/>
+  <use   name="PhysicsTools/Utilities"/>
+  <use   name="TauAnalysis/CandidateTools"/>
+  <use   name="TauAnalysis/GenSimTools"/>
+  <use   name="AnalysisDataFormats/TauAnalysis"/>
+</library>

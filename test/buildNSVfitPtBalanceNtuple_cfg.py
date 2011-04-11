@@ -1,17 +1,45 @@
 import FWCore.ParameterSet.Config as cms
+import FWCore.ParameterSet.VarParsing as VarParsing
 
 process = cms.Process("ANA")
-
-process.maxEvents = cms.untracked.PSet(input = cms.untracked.int32(int(1e6)))
-
 process.load("Configuration.GenProduction.PYTHIA6_Tauola_gg_H100_tautau_7TeV_cff")
+print "Forcing mu-had decays"
+process.generator.ExternalDecays.Tauola.InputCards.mdtau = 216
 
-prodMech = 'bb'
-if prodMech == 'bb':
-    toModify = process.generator.PythiaParameters.processParameters
-    assert(toModify[1].startswith('MSUB(157)'))
-    toModify[1] = 'MSUB(186)= 1   ! gg->QQbarH (MSSM)'
-    toModify.append(
+options = VarParsing.VarParsing ('analysis')
+options.register(
+    'bbMode', 0,
+    VarParsing.VarParsing.multiplicity.singleton,
+    VarParsing.VarParsing.varType.int,
+    "bbMode=1 specifies bb associated production")
+
+options.register(
+    'mass', 90,
+    VarParsing.VarParsing.multiplicity.singleton,
+    VarParsing.VarParsing.varType.int,
+    "Mass of A0")
+
+options.parseArguments()
+
+if options.maxEvents < 0:
+    options.maxEvents = int(1e5)
+
+process.maxEvents = cms.untracked.PSet(input = cms.untracked.int32(
+    options.maxEvents))
+
+process.load("FWCore.MessageService.MessageLogger_cfi")
+process.MessageLogger.cerr.FwkReport.reportEvery = 1000
+
+pythia_config = process.generator.PythiaParameters.processParameters
+# Set Mass
+assert(pythia_config[4].startswith('RMSS(19)'))
+pythia_config[4] = 'RMSS(19)= %0.0f ! m_A' % options.mass
+print "Setting mass of A0 to %0.0f" % options.mass
+
+if options.bbMode:
+    assert(pythia_config[1].startswith('MSUB(157)'))
+    pythia_config[1] = 'MSUB(186)= 1   ! gg->QQbarH (MSSM)'
+    pythia_config.append(
         'KFPR(186,2)= 5 ! Q = b Registered by Alexandre.Nikitenko@cern.ch',
     )
 
@@ -22,9 +50,14 @@ process.load("Configuration.StandardSequences.Services_cff")
 process.load("TauAnalysis.GenSimTools.gen_decaysFromAHs_cfi")
 process.load("RecoTauTag.TauTagTools.TauTruthProduction_cfi")
 
+prod_label = options.bbMode and "bbH" or "ggAH"
+
+output_file_name = "ptBalanceData_mass_%i_%s.root" % (options.mass,
+                                                      prod_label)
+
 process.TFileService = cms.Service(
     "TFileService",
-    fileName = cms.string("ptBalance_ntuple.root")
+    fileName = cms.string(output_file_name)
 )
 
 # Turn off the cuts, we apply them in the ntuple
@@ -76,7 +109,7 @@ process.makePtBalanceNtuple = cms.EDAnalyzer(
     leg1VisSrc = cms.InputTag("genMuonsFromAHtautauDecaysWithinAcceptance"),
     leg2Src = cms.InputTag("matchTauToVisTauHadron"),
     leg2VisSrc = cms.InputTag("genHadronsFromAHtautauDecaysWithinAcceptance"),
-    resonanceMass = cms.double(100),
+    resonanceMass = cms.double(options.mass),
 )
 
 process.p = cms.Path(

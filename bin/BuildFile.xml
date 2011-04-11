@@ -1,0 +1,6 @@
+<bin   file="fitPtBalance.cc" name="fitPtBalance">
+  <use   name="roofit"/>
+  <use   name="root"/>
+  <use   name="rootrflx"/>
+  <use   name="boost_program_options"/>
+</bin>

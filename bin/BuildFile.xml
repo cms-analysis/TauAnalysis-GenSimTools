@@ -1,9 +1,9 @@
-#<bin   file="fitPtBalance.cc" name="fitPtBalance">
-#  <use   name="roofit"/>
-#  <use   name="root"/>
-#  <use   name="rootrflx"/>
-#  <use   name="boost_program_options"/>
-#</bin>
+<!-- bin   file="fitPtBalance.cc" name="fitPtBalance">
+  <use   name="roofit"/>
+  <use   name="root"/>
+  <use   name="rootrflx"/>
+  <use   name="boost_program_options"/>
+</bin -->
 <bin   file="makePtBalancePlots.cc" name="makePtBalancePlots">
   <use   name="roofit"/>
   <use   name="root"/>

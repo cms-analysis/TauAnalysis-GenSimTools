@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <iostream>
+#include <cmath>
 #include <sstream>
 #include <memory>
 #include <boost/foreach.hpp>
@@ -38,6 +39,110 @@
 #include "TauAnalysis/CandidateTools/interface/NSVfitPtBalancePdfs.h"
 
 using namespace RooFit;
+
+class RooDoublePolyVar : public RooAbsReal {
+  public:
+    RooDoublePolyVar(const char* name, const char* title,
+        RooAbsReal& x, RooAbsReal& y, RooArgList& coeffs,
+        size_t orderX, size_t orderY):
+      RooAbsReal(name, title),
+      x_("x", "Dependent x", this, x),
+      y_("y", "Dependent y", this, y),
+      coeffs_("coeffs", "List of coefficients", this),
+      orderX_(orderX), orderY_(orderY) {
+        assert((orderX_+1)*(orderY_+1) == (size_t)coeffs_.getSize());
+        for (int i = 0; i < coeffs.getSize(); i++) {
+          coeffs_.add(*coeffs.at(i));
+        }
+      }
+
+    Double_t evaluate() const {
+      Double_t sum = 0;
+      Double_t x = x_;
+      Double_t y = y_;
+      size_t coeffIndex = 0;
+      for (size_t iX = 0; iX < (orderX_+1); ++iX) {
+        for (size_t iY = 0; iY < (orderY_+1); ++iY) {
+          const RooRealVar* coeff = dynamic_cast<const RooRealVar*>(
+              coeffs_.at(coeffIndex));
+          assert(coeff);
+          sum += coeff->getVal()*std::pow(x, iX)*std::pow(y, iY);
+          coeffIndex++;
+        }
+      }
+      return sum;
+    }
+
+    // Get all the terms that are effected by X
+    RooArgList termsProportionalToX() const {
+      RooArgList output;
+      size_t coeffIndex = 0;
+      for (size_t iX = 0; iX < (orderX_+1); ++iX) {
+        for (size_t iY = 0; iY < (orderY_+1); ++iY) {
+          RooRealVar* coeff = dynamic_cast<RooRealVar*>(
+              coeffs_.at(coeffIndex));
+          assert(coeff);
+          coeffIndex++;
+          // Only add to the output list if there is no Y dependence
+          if (iY == 0) {
+            output.add(*coeff);
+          }
+        }
+      }
+      return output;
+    }
+
+    RooArgList termsProportionalToY() const {
+      RooArgList output;
+      size_t coeffIndex = 0;
+      for (size_t iX = 0; iX < (orderX_+1); ++iX) {
+        for (size_t iY = 0; iY < (orderY_+1); ++iY) {
+          RooRealVar* coeff = dynamic_cast<RooRealVar*>(
+              coeffs_.at(coeffIndex));
+          assert(coeff);
+          coeffIndex++;
+          // Only add to the output list if there is no Y dependence
+          if (iX == 0) {
+            output.add(*coeff);
+          }
+        }
+      }
+      return output;
+    }
+
+  private:
+    RooRealProxy x_;
+    RooRealProxy y_;
+    RooListProxy coeffs_;
+    size_t orderX_;
+    size_t orderY_;
+};
+
+// Set the values of all objects in a list
+void setValue(RooArgList& args, Double_t value) {
+  for (int i = 0; i < args.getSize(); ++i) {
+    RooRealVar* var = dynamic_cast<RooRealVar*>(args.at(i));
+    assert(var);
+    var->setVal(value);
+  }
+}
+
+void setError(RooArgList& args, Double_t error) {
+  for (int i = 0; i < args.getSize(); ++i) {
+    RooRealVar* var = dynamic_cast<RooRealVar*>(args.at(i));
+    assert(var);
+    var->setError(error);
+  }
+}
+
+void setConstant(RooArgList& args, bool isConstant) {
+  for (int i = 0; i < args.getSize(); ++i) {
+    RooRealVar* var = dynamic_cast<RooRealVar*>(args.at(i));
+    assert(var);
+    var->setConstant(isConstant);
+  }
+}
+
 
 void plotSlices(const RooRealVar& toPlot,
     const RooAbsPdf& fittedModel, RooAbsData& data,
@@ -82,6 +187,8 @@ void plotSlices(const RooRealVar& toPlot,
       std::auto_ptr<RooPlot> frame(toPlot.frame(Range(0, 4.0)));
       phiSlice->plotOn(frame.get());
       fittedModel.plotOn(frame.get(), ProjWData(conditionalVars, *phiSlice));
+      fittedModel.plotOn(frame.get(), ProjWData(conditionalVars, *phiSlice),
+          Components("gauss*"), LineStyle(kDashed)) ;
       std::stringstream plotTitle;
       plotTitle << " Leg1Pt for mass " << massRangeStr.str()
         << " and #Delta#phi " << phiRangeStr.str();
@@ -323,16 +430,16 @@ int main(int argc, const char *argv[]) {
   RooDataHist binnedReducedData("binnedReducedData", "binnedReducedData",
       RooArgSet(*dPhi, *scaledLeg1Pt, resonanceMass), *reducedDataSet);
 
-  //plotSlices(*scaledLeg1Pt, modelDPhi, binnedReducedData, conditionalVariables,
-  //    &canvas, "reduced_fit_reduced_data", 1, 155, 165, 3, 0, 3.14/2);
+  plotSlices(*scaledLeg1Pt, modelDPhi, binnedReducedData, conditionalVariables,
+      &canvas, "reduced_fit_reduced_data", 1, 155, 165, 3, 0, 3.14/2);
 
   std::cout << "Creating binned dataset" << std::endl;
 
   RooDataHist binnedData("binnedData", "binnedData",
       RooArgSet(*dPhi, *scaledLeg1Pt, resonanceMass), *selectedData);
 
-  //plotSlices(*scaledLeg1Pt, modelDPhi, binnedData, conditionalVariables,
-  //    &canvas, "reduced_fit", 3, 100, 300, 3, 0, 3.14/2);
+  plotSlices(*scaledLeg1Pt, modelDPhi, binnedData, conditionalVariables,
+      &canvas, "reduced_fit", 3, 100, 300, 3, 0, 3.14/2);
 
   std::cout << "Now fitting full model...." << std::endl;
   // Fix mass corrections

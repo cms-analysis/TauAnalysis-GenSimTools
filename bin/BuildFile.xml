@@ -8,5 +8,6 @@
   <use   name="roofit"/>
   <use   name="root"/>
   <use   name="rootrflx"/>
+  <use   name="TauAnalysis/CandidateTools"/>
   <use   name="boost_program_options"/>
 </bin>

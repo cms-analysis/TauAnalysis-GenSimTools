@@ -20,7 +20,9 @@
 #include "RooVoigtian.h"
 #include "RooLandau.h"
 #include "RooGExpModel.h"
+#include "RooExponential.h"
 #include "RooGaussian.h"
+#include "RooGamma.h"
 #include "RooGenericPdf.h"
 #include "RooChebychev.h"
 #include "RooNumConvPdf.h"
@@ -32,8 +34,7 @@ using namespace RooFit;
 class RooResonanceDecayPtPdf : public RooAbsPdf {
   public:
     RooResonanceDecayPtPdf(const char *name, const char *title,
-        RooAbsReal& _scaledDecayProdPt, RooAbsReal& _decaProdSinTheta,
-        RooAbsReal& _betaGamma);
+        RooAbsReal& _scaledDecayProdPt, RooAbsReal& _maxScaledPt);
     RooResonanceDecayPtPdf(const RooResonanceDecayPtPdf& other,
         const char *name=0);
     virtual TObject* clone(const char* newname) const {
@@ -55,103 +56,111 @@ class RooResonanceDecayPtPdf : public RooAbsPdf {
       return square(scaledDecayProdPt_);
     }
 
-    inline Double_t betaGammaSquared() const {
-      return square(betaGamma_);
+    inline Double_t maxScaledPtSquared() const {
+      return square(maxScaledPt_);
     }
 
     Double_t indefiniteIntegral(Int_t code, Double_t integrandValue) const;
     RooRealProxy scaledDecayProdPt_;
-    RooRealProxy decayProdSinTheta_;
-    RooRealProxy betaGamma_;
+    RooRealProxy maxScaledPt_;
     mutable int functionCall_;
     //ClassDef(RooResonanceDecayPtPdf, 0) // Resonance decay Pt PDF
 };
 
 RooResonanceDecayPtPdf::RooResonanceDecayPtPdf(
     const char *name, const char *title,
-    RooAbsReal& _scaledDecayProdPt, RooAbsReal& _decaProdSinTheta,
-    RooAbsReal& _betaGamma):
+    RooAbsReal& _scaledDecayProdPt, RooAbsReal& _maxScaledPt):
   RooAbsPdf(name, title),
   scaledDecayProdPt_("scaledDecayProdPt",
       "Pt of decay product divided by half of the resonance mass",
       this, _scaledDecayProdPt),
-  decayProdSinTheta_("decayProdSinTheta", "Sin(theta) of decay product",
-      this, _decaProdSinTheta),
-  betaGamma_("betaGamma", "Lorentz Beta*Gamma of mother boost", this,
-      _betaGamma) {}
+  maxScaledPt_("maxScaledPt", "Scale of the decay", this,
+      _maxScaledPt) {}
 
 
 RooResonanceDecayPtPdf::RooResonanceDecayPtPdf(
     const RooResonanceDecayPtPdf& other, const char *name):
   RooAbsPdf(other, name),
   scaledDecayProdPt_("scaledDecayProdPt", this, other.scaledDecayProdPt_),
-  decayProdSinTheta_("decayProdSinTheta", this, other.decayProdSinTheta_),
-  betaGamma_("betaGamma", this, other.betaGamma_)
+  maxScaledPt_("maxScaledPt", this, other.maxScaledPt_)
 {}
 
+Double_t RooResonanceDecayPtPdf::evaluateCutoffImpl(
+    double pt, double maxPt) const {
+  double cutoffPointVal = cutoffPoint(maxPt);
+  assert(pt > cutoffPointVal);
+  Double_t valueAtCutoff = evaluateNormalImpl(cutoffPointVal, maxPt);
+  return valueAtCutoff*TMath::Exp(
+      (cutoffPointVal - scaledDecayProdPt_)*cutOffDecay_);
+}
+
+Double_t RooResonanceDecayPtPdf::evaluateCutoffRegion() const {
+
+}
+
+Double_t RooResonanceDecayPtPdf::evaluateNormalImpl(
+    double pt, double maxPt) const {
+  Double_t xSquared = square(pt);
+  Double_t sSquared = square(maxPt);
+  return pt*TMath::Sqrt(sSquared - xSquared);
+}
+
+Double_t RooResonanceDecayPtPdf::evaluateNormalRegion() const {
+  assert(scaledDecayProdPt_ < maxScaledPt_);
+  return evaluateNormalImpl(scaledDecayProdPt_, maxScaledPt_);
+}
 
 Double_t RooResonanceDecayPtPdf::evaluate() const {
-  Double_t constantTerm = betaGammaSquared() + sinThetaSquared();
-  Double_t xSquared = scaledDecayProdPtSquared();
-  double cutoffPoint = 0.97*constantTerm;
-  double result = -1;
-  if (xSquared < cutoffPoint)
-    result = scaledDecayProdPt_/TMath::Sqrt(constantTerm - xSquared);
-  else {
-    double valueAtCutoff =
-      scaledDecayProdPt_/TMath::Sqrt(constantTerm - cutoffPoint);
-    result = valueAtCutoff*TMath::Exp(
-        -(xSquared - cutoffPoint)*1e2/constantTerm);
+  double cutoffPointVal = cutoffPoint(maxScaledPt_);
+  if (scaledDecayProdPt_ > cutoffPointVal)) {
+    return evaluateCutoffRegion();
+  } else
+    return evaluateNormalRegion();
+}
+
+Double_t RooResonanceDecayPtPdf::indefiniteIntegralNormalRegion(Int_t code,
+    Double_t integrandValue) const {
+  if (code == 1) {
+    assert(scaledDecayProdPt_ <= cutoffPointVal(integrandValue));
+    // Integrating w.r.t. maximum scaled Pt for a fixed value of Pt
+    return scaledDecayProdPt_*TMath::Log(
+        2*(integrandValue + TMath::Sqrt(
+            square(integrandValue) - square(scaledDecayProdPt_))));
+  } else if (code == 2) {
+    assert(integrandValue <= cutoffPointVal(maxScaledPt_));
+    // Integrating w.r.t. scaled Pt for a fixed value of scaled Pt
+    return -TMath::Sqrt(square(maxScaledPt_) - square(integrandValue));
   }
+}
 
-  if (scaledDecayProdPt_ < 0)
-    result = 0;
-
-  functionCall_++;
-  if (false && functionCall_ % 10000 == 0)
-    std::cout << "<eval> call: " << functionCall_
-      << " pt: " << scaledDecayProdPt_ <<
-      " bg: " << betaGamma_ <<   " st: " << decayProdSinTheta_
-      << " cterm: " << constantTerm
-      << " res: " << result << std::endl;
-
-  return result;
+Double_t RooResonanceDecayPtPdf::indefiniteIntegralCutoffRegion(Int_t code,
+    Double_t integrandValue) const {
+  if (code == 1) {
+    // Integrating w.r.t. maximum scaled Pt for a fixed value of Pt
+    return scaledDecayProdPt_*TMath::Log(
+        2*(integrandValue + TMath::Sqrt(
+            square(integrandValue) - square(scaledDecayProdPt_))));
+  } else if (code == 2) {
+    assert(integrandValue <= cutoffPointVal(maxScaledPt_));
+    // Integrating w.r.t. scaled Pt for a fixed value of scaled Pt
+    return -TMath::Sqrt(square(maxScaledPt_) - square(integrandValue));
+  }
 }
 
 Int_t RooResonanceDecayPtPdf::getAnalyticalIntegral(
     RooArgSet& allVars, RooArgSet& analVars, const char *rangeName) const {
-  return 0;
+  //if (matchArgs(allVars, analVars, scaledDecayProdPt_, maxScaledPt_)) {
+    //return 3;
+  //}
   if (matchArgs(allVars, analVars, scaledDecayProdPt_)) {
-    return 1;
-  } else if (matchArgs(allVars, analVars, decayProdSinTheta_)) {
     return 2;
-  } else if (matchArgs(allVars, analVars, betaGamma_)) {
-    return 3;
+  }
+  if (matchArgs(allVars, analVars, maxScaledPt_)) {
+    return 1;
   }
   return 0;
 }
 
-Double_t RooResonanceDecayPtPdf::indefiniteIntegral(Int_t code,
-    Double_t integrandValue) const {
-  Double_t constantTerm = betaGammaSquared() + sinThetaSquared();
-  if (code == 1) { // integrating w.r.t. pt
-    return TMath::ATan(
-        integrandValue/
-        TMath::Sqrt(constantTerm - square(integrandValue)))
-      - integrandValue/TMath::Sqrt(constantTerm);
-  }
-  if (code == 2 || code == 3) { // Integate w.r.t. sineTheta or betaGamma
-    return TMath::Log(
-        TMath::Sqrt(
-          sinThetaSquared() + betaGammaSquared() - scaledDecayProdPtSquared())
-        + integrandValue)
-      - TMath::Log(
-          TMath::Sqrt(
-            sinThetaSquared() + betaGammaSquared()) + integrandValue);
-  }
-  assert(false);
-  return 0;
-}
 
 Double_t RooResonanceDecayPtPdf::analyticalIntegral(Int_t code) const {
   if (code == 1) {
@@ -213,7 +222,7 @@ int main(int argc, const char *argv[]) {
       RooArgSet(resonanceMass, resonancePt));
 
   RooFormulaVar gammaTFormula("gammaT",
-      "1.0/(sqrt(1 - betaT*betaT))", betaTFormula);
+      "1.0/(sqrt(1 - betaT*betaT))-1.0", betaTFormula);
 
   RooFormulaVar betaGammaTFormula("betaGammaT",
       "betaT*gammaT", RooArgSet(betaTFormula, gammaTFormula));
@@ -254,6 +263,10 @@ int main(int argc, const char *argv[]) {
   RooRealVar* leg1SinThetaSqPlusBetaGSq = static_cast<RooRealVar*>(
     data.addColumn(leg1SinThetaSqPlusBetaGSqFunc));
 
+  RooRealVar* gammaT = static_cast<RooRealVar*>(
+      data.addColumn(gammaTFormula));
+  gammaT->setRange(0, 20);
+
   std::cout << "Initial data set has " << data.numEntries() << std::endl;
 
   RooAbsData* dataAnaSelection = data.reduce(
@@ -264,10 +277,10 @@ int main(int argc, const char *argv[]) {
     << dataAnaSelection->numEntries() << "entries" <<  std::endl;
 
   RooAbsData* dataBackToBack = dataAnaSelection->reduce(
-      "leg1Leg2DPhi > 3.0 && abs(leg1VisEta) > 1.2");
+      "leg1Leg2DPhi > 2.8");
 
   RooAbsData* dataNotBackToBack = dataAnaSelection->reduce(
-      "leg1Leg2DPhi > 2.0");
+      "leg1Leg2DPhi < 2.2 && leg1Leg2DPhi > 2.0");
 
   std::cout << "There are " << dataBackToBack->numEntries()
     << " back-to-back entries" << std::endl;
@@ -290,6 +303,25 @@ int main(int argc, const char *argv[]) {
   RooGaussian testicles("blah", "blah",
       *scaledLeg1Pt, *leg1SinThetaSqPlusBetaGSq, testThing);
 
+
+  RooRealVar gammaDecayBtB("gammaFitBtB", "gammaFitBtB", -1, -100, 100);
+  RooRealVar gammaDecayNotBtB("gammaFitNotBtB", "gammaFitNotBtB", 5, -1000, 1000);
+  RooRealVar gammaDecayExpTerm("gammaFitExpTerm", "gammaFitExpTerm", 1, -1000, 1000);
+  RooRealVar gammaDecayExpTerm2("gammaFitExpTerm2", "gammaFitExpTerm2", 1, 0.5, 4);
+
+  RooGenericPdf myTestFitasdf("test", "test", "pow(@0, @2)*exp(@1*pow(@0, @3))",
+      RooArgList(*gammaT, gammaDecayNotBtB, gammaDecayExpTerm, gammaDecayExpTerm2));
+
+  RooLandau myTestFit("test2", "test2",
+      *gammaT, gammaDecayNotBtB, gammaDecayExpTerm);
+
+  RooGExpModel myTestFitFuck("test2", "test2",
+      *gammaT, gammaDecayNotBtB, gammaDecayExpTerm);
+
+  myTestFit.fitTo(*dataNotBackToBack);
+  //myTestFit.fitTo(*dataBackToBack);
+  //gammaFitBtB.fitTo(*dataBackToBack);
+
   //RooFFTConvPdf model("model", "model", betaGammaFit,
       //mypdf, betaGammaPdf);
 
@@ -298,6 +330,14 @@ int main(int argc, const char *argv[]) {
       //);
 
   std::cout << "Painting graphs" << std::endl;
+
+  RooPlot* gammaTFrame = gammaT->frame(Range(0, 2.));
+  dataNotBackToBack->plotOn(gammaTFrame);
+  //dataBackToBack->plotOn(gammaTFrame);
+  //gammaFitBtB.plotOn(gammaTFrame);
+  myTestFit.plotOn(gammaTFrame);
+  gammaTFrame->Draw();
+  canvas.SaveAs("gammaT.png");
 
   RooPlot* sinThetaFrame = leg1VisSinTheta->frame(Range(-2, 2.));
   dataNotBackToBack->plotOn(sinThetaFrame);

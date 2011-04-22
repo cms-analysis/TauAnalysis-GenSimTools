@@ -2,6 +2,7 @@
 #include <iostream>
 #include <sstream>
 #include <memory>
+#include <boost/foreach.hpp>
 
 #include "TFile.h"
 #include "TChain.h"
@@ -10,6 +11,7 @@
 #include "TROOT.h"
 #include "TMath.h"
 #include "THStack.h"
+#include "TGraphErrors.h"
 
 #include "RooPlot.h"
 #include "RooRealVar.h"
@@ -31,8 +33,9 @@
 #include "RooNumConvPdf.h"
 #include "RooFFTConvPdf.h"
 
-using namespace RooFit;
+#include "TauAnalysis/CandidateTools/interface/NSVfitPtBalancePdfs.h"
 
+using namespace RooFit;
 
 int main(int argc, const char *argv[]) {
   if (argc < 2) {
@@ -40,6 +43,7 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
   gROOT->SetBatch(true);
+  gROOT->SetStyle("Plain");
   // Load the data
   std::cout << "Loading data from " << argv[1] <<  std::endl;
   TChain chain("makePtBalanceNtuple/ptBalanceNtuple");
@@ -73,93 +77,188 @@ int main(int argc, const char *argv[]) {
 
   RooFormulaVar scaledLeg1PtFunc("scaledLeg1Pt",
       "2.0*leg1Pt/resonanceMass", RooArgSet(leg1Pt, resonanceMass));
+  RooFormulaVar dPhiFormula("dPhi", "#pi - #Delta #phi",
+      "3.14159265 - leg1Leg2DPhi", RooArgSet(leg1Leg2DPhi));
+
   RooRealVar* scaledLeg1Pt = static_cast<RooRealVar*>(
       data.addColumn(scaledLeg1PtFunc));
+  RooRealVar* dPhi = static_cast<RooRealVar*>(
+      data.addColumn(dPhiFormula));
+  dPhi->setRange(0, 1.8);
 
   std::cout << "Initial data set has " << data.numEntries() << std::endl;
 
-  //RooAbsData* selectedData = data.reduce(
-      //"leg1VisPt > 15 && leg2VisPt > 20"
-      //"&& abs(leg1VisEta) < 2.1 && abs(leg2VisEta) < 2.3");
+  // Apply analysys selections and reduce the total # of variables
   RooAbsData* selectedData = data.reduce(
-      "leg1VisPt > 0 && leg2VisPt > 0"
+      RooArgSet(*scaledLeg1Pt, *dPhi, resonanceMass),
+      "leg1VisPt > 15 && leg2VisPt > 20"
       "&& abs(leg1VisEta) < 2.1 && abs(leg2VisEta) < 2.3");
 
   std::cout << "After analysis selection data has "
     << selectedData->numEntries() << "entries" <<  std::endl;
 
-  // Slice up the data by opening angles
-  size_t nDPhiSlices = 7;
-  double maxDPhi = TMath::Pi()*5.0/8;
-  for(size_t i = 0; i < nDPhiSlices; i++) {
-    double step = maxDPhi/nDPhiSlices;
-    double maxDPhi = TMath::Pi() - (i*step);
-    double minDPhi = TMath::Pi() - ((i+1)*step);
-    std::stringstream dPhiCut;
-    dPhiCut << "(" << minDPhi << " < leg1Leg2DPhi) && (leg1Leg2DPhi <= "
-      << maxDPhi << ")";
+  RooAbsData* reducedDataSet = selectedData->reduce(
+      "165 > resonanceMass && resonanceMass > 155");
 
-    RooAbsData* dPhiSlice = selectedData->reduce(dPhiCut.str().c_str());
-    std::cout << " Looking at a DPhi slice in (" << minDPhi << ", "
-      << maxDPhi << ") with " << dPhiSlice->numEntries() << " entries. "
-      << std::endl;
+  std::cout << "Making reduced data set with"
+    << reducedDataSet->numEntries() << "entries" <<  std::endl;
 
-    std::vector<RooAbsData*> massPoints;
-    std::vector<TH1*> massHistos;
+  std::string chebyshevSecondOrder = "abs(@1 + @2*(@0) + @3*(2*@0*@0 - 1))";
 
-    double massCutStart = 85.0;
-    double massCutEnd = 305.0;
-    double massCutStep = 10;
-    // Slice up by resonance mass
-    size_t massCounter = 0;
-    for (double lowMass = massCutStart; lowMass < massCutEnd;
-        lowMass += massCutStep, massCounter++ ) {
-      double highMass = lowMass + massCutStep;
-      std::stringstream cut;
-      cut << "(" << lowMass << " < resonanceMass) && (resonanceMass <= "
-        << highMass << ")";
-      RooAbsData* massSlice = dPhiSlice->reduce(cut.str().c_str());
-      std::cout << " --> making mass slice between (" << lowMass
-        << ", " << highMass << ")" << massSlice->numEntries()
-        << " entries. " << std::endl;
-      std::stringstream histoname;
-      histoname << "histo_mass_" << lowMass << "_" << highMass;
-      TH1* histo = massSlice->createHistogram(
-          histoname.str().c_str(),
-          *scaledLeg1Pt,  Binning(25, 0, 5));
-      histo->SetLineColor(massCounter+1);
-      massPoints.push_back(massSlice);
-      massHistos.push_back(histo);
+  RooRealVar gaussMeanA("gaussMeanA", "gaussMeanA", 1, 0, 5);
+  RooRealVar gaussMeanB("gaussMeanB", "gaussMeanB", 0, -5, 5);
+  RooRealVar gaussMeanC("gaussMeanC", "gaussMeanC", 0, -5, 5);
+  RooFormulaVar gaussMean(
+      "gaussMean", "Gaussian #mu", chebyshevSecondOrder.c_str(),
+      RooArgList(*dPhi, gaussMeanA, gaussMeanB, gaussMeanC));
+
+  RooRealVar gaussSigmaA("gaussSigmaA", "gaussSigmaA", 0.1, 0, 5);
+  RooRealVar gaussSigmaB("gaussSigmaB", "gaussSigmaB", 0.1, -5, 5);
+  RooRealVar gaussSigmaC("gaussSigmaC", "gaussSigmaC", 0, -5, 5);
+  RooFormulaVar gaussSigma(
+      "gaussSigma", "Gaussian #sigma", chebyshevSecondOrder.c_str(),
+      RooArgList(*dPhi, gaussSigmaA, gaussSigmaB, gaussSigmaC));
+
+  RooRealVar gammaScaleA("gammaScaleA", "gammaScaleA", 10, 0, 25);
+  RooRealVar gammaScaleB("gammaScaleB", "gammaScaleB", -2.5, -25, 25);
+  RooRealVar gammaScaleC("gammaScaleC", "gammaScaleC", 0, -5, 5);
+  RooFormulaVar gammaScale(
+      "gammaScale", "#Gamma scale", chebyshevSecondOrder.c_str(),
+      RooArgList(*dPhi, gammaScaleA, gammaScaleB, gammaScaleC));
+
+  RooRealVar gammaShapeA("gammaShapeA", "gammaShapeA", 0.05, 0, 25);
+  RooRealVar gammaShapeB("gammaShapeB", "gammaShapeB", 0.113, -25, 25);
+  RooRealVar gammaShapeC("gammaShapeC", "gammaShapeC", 0, -5, 5);
+  RooFormulaVar gammaShape(
+      "gammaShape", "#Gamma scale", chebyshevSecondOrder.c_str(),
+      RooArgList(*dPhi, gammaShapeA, gammaShapeB, gammaShapeC));
+
+  RooRealVar gammaFracA("gammaFracA", "gammaFracA", 0.0096, 0, 5);
+  RooRealVar gammaFracB("gammaFracB", "gammaFracB", 0.015, 0, 5);
+  //RooRealVar gammaFracC("gammaFracC", "gammaFracC", 0, -5, 5);
+  RooFormulaVar gammaFrac(
+      "gammaFrac", "#Gamma scale", "(2.0/3.14159)*atan(@2*@0 + @1)",
+      RooArgList(*dPhi, gammaFracA, gammaFracB));
+
+  RooRealVar zero("zero", "zero", 0, -1, 1);
+  zero.setConstant(true);
+
+  RooGamma gamma("gamma", "gamma",
+      *scaledLeg1Pt, gammaScale, gammaShape, zero);
+
+  RooGaussian gauss("gauss", "gauss",
+      *scaledLeg1Pt, gaussMean, gaussSigma);
+
+  RooAddPdf model("sum", "sum", gamma, gauss, gammaFrac);
+
+  model.Print("v");
+
+  std::cout << "Fitting reduced model..." << std::endl;
+  model.fitTo(*reducedDataSet, ConditionalObservables(*dPhi));
+
+  std::cout << "Now fitting full model...." << std::endl;
+  model.fitTo(*selectedData, ConditionalObservables(*dPhi));
+
+  RooPlot* scaledLeg1Frame = scaledLeg1Pt->frame(Range(0, 3.0));
+  std::cout << "Plotting data..." << std::endl;
+  selectedData->plotOn(scaledLeg1Frame);
+  std::cout << "Plotting model..." << std::endl;
+  model.plotOn(scaledLeg1Frame, ProjWData(*dPhi, *selectedData));
+  //model.plotOn(scaledLeg1Frame, ProjWData(*dPhi, *selectedData),
+      //Components(gauss), LineStyle(kDashed));
+  scaledLeg1Frame->Draw();
+  canvas.SaveAs("overall_fit.png");
+
+  delete scaledLeg1Frame;
+
+  int nMassSlices = 5;
+  double lowMass = 90;
+  double highMass = 300;
+  for (int iMassSlice = 0; iMassSlice < nMassSlices; ++iMassSlice) {
+    double minMass = lowMass + iMassSlice*(highMass - lowMass)/nMassSlices;
+    double maxMass = lowMass + (iMassSlice+1)*(highMass - lowMass)/nMassSlices;
+    std::stringstream massSliceCut;
+    massSliceCut << minMass << " < resonanceMass && resonanceMass < " << maxMass;
+    std::auto_ptr<RooAbsData> massSlice(
+        selectedData->reduce(massSliceCut.str().c_str()));
+    std::cout << "Made mass slice with " << massSlice->numEntries()
+      << " entries" << std::endl;
+
+    int nSlices = 4;
+    double phiSliceSize = TMath::Pi()/10.0;
+    for (int iSlice = 0; iSlice < nSlices; ++iSlice) {
+      std::cout << "Plotting slice " << iSlice << std::endl;
+      double minPhi = (iSlice)*phiSliceSize;
+      double maxPhi = (iSlice+1)*phiSliceSize;
+      std::auto_ptr<RooPlot> frame(scaledLeg1Pt->frame(Range(0, 3.0)));
+      std::stringstream sliceCut;
+      sliceCut << minPhi << " < dPhi && dPhi < " << maxPhi;
+      std::auto_ptr<RooAbsData> dataSlice(
+          massSlice->reduce(sliceCut.str().c_str()));
+      dataSlice->plotOn(frame.get());
+      model.plotOn(frame.get(), ProjWData(*dPhi, *dataSlice));
+      frame->Draw();
+      std::stringstream sliceFileName;
+      sliceFileName << "slice_after_fit_" << iSlice << "_mass_" << iMassSlice << ".png";
+      canvas.SaveAs(sliceFileName.str().c_str());
     }
-    THStack stack("stack", "stack");
-    for (size_t iMass = 0; iMass < massPoints.size(); iMass++) {
-      massHistos[iMass]->Scale(1.0/massHistos[iMass]->Integral());
-      stack.Add(massHistos[iMass], "hist");
-    }
-    stack.Draw("nostack");
-
-    std::stringstream file_name;
-    file_name << "slice_" << i << ".pdf";
-    canvas.SaveAs(file_name.str().c_str());
-
-    for (size_t j = 0; j < massPoints.size(); j++) {
-      delete massPoints[j];
-      delete massHistos[j];
-    }
-
-    RooRealVar landauMean("landauMean", "landauMean", 1, 0, 10);
-    RooRealVar landauWidth("landauWidth", "landauWidth", 1, 0, 10);
-    RooGaussian landau("landau", "landau", *scaledLeg1Pt,
-        landauMean, landauWidth);
-
-    landau.fitTo(*dPhiSlice);
-    RooPlot* scaledLeg1Frame = scaledLeg1Pt->frame(Range(0, 3.0));
-    dPhiSlice->plotOn(scaledLeg1Frame);
-    landau.plotOn(scaledLeg1Frame);
-    scaledLeg1Frame->Draw();
-    std::stringstream fit_file_name;
-    fit_file_name << "slice_fit_" << i << ".pdf";
-    canvas.SaveAs(fit_file_name.str().c_str());
   }
+
+  // Add corrections based on resonance mass
+  std::string doubleChebyshevSecondOrder =
+    "abs(@1 + @2*(@0) + @3*(2*@0*@0 - 1) + @4*(@5) + @6*(2*@4*@4-1))";
+
+  RooRealVar gaussMeanCorrA("gaussMeanCorrA", "gaussMeanCorrA", 0, -5, 5);
+  RooRealVar gaussMeanCorrB("gaussMeanCorrB", "gaussMeanCorrB", 0, -5, 5);
+  RooFormulaVar gaussMeanCorr(
+      "gaussMeanCorr", "Gaussian #mu", doubleChebyshevSecondOrder.c_str(),
+      RooArgList(*dPhi, gaussMeanA, gaussMeanB, gaussMeanC,
+        resonanceMass, gaussMeanCorrA, gaussMeanCorrB));
+
+  RooRealVar gaussSigmaCorrA("gaussSigmaCorrA", "gaussSigmaCorrA", 0.0, -5, 5);
+  RooRealVar gaussSigmaCorrB("gaussSigmaCorrB", "gaussSigmaCorrB", 0.0, -5, 5);
+  RooFormulaVar gaussSigmaCorr(
+      "gaussSigmaCorr", "Gaussian #sigma", doubleChebyshevSecondOrder.c_str(),
+      RooArgList(*dPhi, gaussSigmaA, gaussSigmaB, gaussSigmaC,
+        resonanceMass, gaussSigmaCorrA, gaussSigmaCorrB));
+
+  RooRealVar gammaScaleCorrA("gammaScaleCorrA", "gammaScaleCorrA", 0.0, -25, 25);
+  RooRealVar gammaScaleCorrB("gammaScaleCorrB", "gammaScaleCorrB", 0.0, -25, 25);
+  RooFormulaVar gammaScaleCorr(
+      "gammaScaleCorr", "#Gamma scale", doubleChebyshevSecondOrder.c_str(),
+      RooArgList(*dPhi, gammaScaleA, gammaScaleB, gammaScaleC,
+        resonanceMass, gammaScaleCorrA, gammaScaleCorrB));
+
+  RooRealVar gammaShapeCorrA("gammaShapeCorrA", "gammaShapeCorrA", 0.0, -25, 25);
+  RooRealVar gammaShapeCorrB("gammaShapeCorrB", "gammaShapeCorrB", 0.0, -25, 25);
+  RooFormulaVar gammaShapeCorr(
+      "gammaShapeCorr", "#Gamma scale", doubleChebyshevSecondOrder.c_str(),
+      RooArgList(*dPhi, gammaShapeA, gammaShapeB, gammaShapeC,
+        resonanceMass, gammaShapeCorrA, gammaShapeCorrB));
+
+  RooGamma correctedGamma("correctedGamma", "correctedGamma",
+      *scaledLeg1Pt, gammaScaleCorr, gammaShapeCorr, zero);
+
+  RooGaussian correctedGaussian("correctedGaussian", "correctedGaussian",
+      *scaledLeg1Pt, gaussMeanCorr, gaussSigmaCorr);
+
+  RooAddPdf correctedModel("sumCorr", "sumCorr", correctedGamma,
+      correctedGaussian, gammaFrac);
+
+  correctedModel.Print("v");
+
+  std::cout << "Fitting corrected data..." << std::endl;
+  correctedModel.fitTo(*selectedData,
+      ConditionalObservables(RooArgSet(*dPhi, resonanceMass)));
+
+  scaledLeg1Frame = scaledLeg1Pt->frame(Range(0, 3.0));
+  std::cout << "Plotting corrected data..." << std::endl;
+  selectedData->plotOn(scaledLeg1Frame);
+  std::cout << "Plotting model..." << std::endl;
+  correctedModel.plotOn(scaledLeg1Frame, ProjWData(
+        RooArgSet(*dPhi, resonanceMass), *selectedData));
+  scaledLeg1Frame->Draw();
+  canvas.SaveAs("fitCorrected.png");
+
   return 0;
 }

@@ -11,8 +11,6 @@
 #include "TCanvas.h"
 #include "TROOT.h"
 #include "TMath.h"
-#include "THStack.h"
-#include "TGraphErrors.h"
 
 #include "RooPlot.h"
 #include "RooRealVar.h"
@@ -23,17 +21,9 @@
 #include "RooDataHist.h"
 
 // PDFs
-#include "RooBreitWigner.h"
-#include "RooVoigtian.h"
-#include "RooLandau.h"
-#include "RooGExpModel.h"
-#include "RooExponential.h"
 #include "RooGaussian.h"
+#include "RooBifurGauss.h"
 #include "RooGamma.h"
-#include "RooGenericPdf.h"
-#include "RooChebychev.h"
-#include "RooNumConvPdf.h"
-#include "RooFFTConvPdf.h"
 #include "RooMsgService.h"
 
 #include "TauAnalysis/CandidateTools/interface/NSVfitPtBalancePdfs.h"
@@ -241,7 +231,7 @@ void plotSlices(const RooRealVar& toPlot,
       phiSlice->plotOn(frame.get());
       fittedModel.plotOn(frame.get(), ProjWData(conditionalVars, *phiSlice));
       fittedModel.plotOn(frame.get(), ProjWData(conditionalVars, *phiSlice),
-          Components("gauss*"), LineStyle(kDashed)) ;
+          Components("*gauss*"), LineStyle(kDotted)) ;
       std::stringstream plotTitle;
       plotTitle << " Leg1Pt for mass " << massRangeStr.str()
         << " and #Delta#phi " << phiRangeStr.str();
@@ -314,6 +304,7 @@ int main(int argc, const char *argv[]) {
   RooRealVar* scaledLeg1Pt = static_cast<RooRealVar*>(
       data.addColumn(scaledLeg1PtFunc));
   scaledLeg1Pt->setRange(0, 15);
+  scaledLeg1Pt->setBins(150);
   RooRealVar* dPhi = static_cast<RooRealVar*>(
       data.addColumn(dPhiFormula));
   dPhi->setRange(0, 1.8);
@@ -332,8 +323,15 @@ int main(int argc, const char *argv[]) {
   std::cout << "After analysis selection data has "
     << selectedData->numEntries() << "entries" <<  std::endl;
 
+  double reducedMassMin = 245;
+  double reducedMassMax = 255;
+
+  std::stringstream reducedMassCut;
+  reducedMassCut << reducedMassMax << " > resonanceMass && resonanceMass > "
+    << reducedMassMin;
+
   RooAbsData* reducedDataSet = selectedData->reduce(
-      "165 > resonanceMass && resonanceMass > 155");
+      reducedMassCut.str().c_str());
 
   RooAbsData* backToBackData = selectedData->reduce("dPhi < 0.03");
 
@@ -360,6 +358,9 @@ int main(int argc, const char *argv[]) {
   RooArgList gaussSigmaVars = buildVariableCollection(
       9, "GaussSigma", "#Gauss sigma", 0, -10, 10);
 
+  RooArgList gaussSigmaLVars = buildVariableCollection(
+      9, "GaussSigmaL", "#Gauss sigma left", 0, -10, 10);
+
   RooArgList mixVars = buildVariableCollection(
       9, "Mix", "#Gauss sigma", 0, -10, 10);
 
@@ -372,8 +373,11 @@ int main(int argc, const char *argv[]) {
   RooDoublePolyVar gaussMean("GaussMean", "Gaussian mean",
       *dPhi, *scaledMass, gaussMeanVars, 2, 2, true);
 
-  RooDoublePolyVar gaussSigma("GaussSigma", "Gaussian mean",
+  RooDoublePolyVar gaussSigma("GaussSigma", "Gaussian sigma",
       *dPhi, *scaledMass, gaussSigmaVars, 2, 2, true);
+
+  RooDoublePolyVar gaussSigmaL("GaussSigmaL", "Gaussian left sigma",
+      *dPhi, *scaledMass, gaussSigmaLVars, 2, 2, true);
 
   RooDoublePolyVar mixRaw("MixRaw", "Mixing fraction raw",
       *dPhi, *scaledMass, mixVars, 2, 2, true);
@@ -386,8 +390,11 @@ int main(int argc, const char *argv[]) {
   RooGaussian gauss("gauss", "gauss",
       *scaledLeg1Pt, gaussMean, gaussSigma);
 
+  RooBifurGauss bifurGauss("bifurGauss", "bifurGauss",
+      *scaledLeg1Pt, gaussMean, gaussSigmaL, gaussSigma);
+
   // Build model
-  RooAddPdf model("sum", "sum", gamma, gauss, mix);
+  RooAddPdf model("sum", "sum", gamma, bifurGauss, mix);
 
   model.Print("v");
 
@@ -396,6 +403,7 @@ int main(int argc, const char *argv[]) {
   gammaShape.getTerm(0) = 0.1;
   gaussMean.getTerm(0) = 1.0;
   gaussSigma.getTerm(0) = 0.1;
+  gaussSigmaL.getTerm(0) = 0.1;
   mixRaw.getTerm(0) = 0.06;
   mixRaw.getTerm(1) = -1.3;
 
@@ -412,6 +420,9 @@ int main(int argc, const char *argv[]) {
   gaussSigma.getTerm(0) = 7.46661e-02;
   gaussSigma.getTerm(3) = 1.92568e-01;
   gaussSigma.getTerm(6) = -3.98217e-02;
+  gaussSigmaL.getTerm(0) = 7.46661e-02;
+  gaussSigmaL.getTerm(3) = 1.92568e-01;
+  gaussSigmaL.getTerm(6) = -3.98217e-02;
   mixRaw.getTerm(0) = 4.11155e-01;
   mixRaw.getTerm(3) = -2.74745e-01;
   mixRaw.getTerm(6) = -1.02066e+00;
@@ -422,6 +433,7 @@ int main(int argc, const char *argv[]) {
   setError(gammaShapeVars, 1e-2);
   setError(gaussMeanVars, 5e-2);
   setError(gaussSigmaVars, 5e-2);
+  setError(gaussSigmaLVars, 5e-2);
   setError(mixVars, 0.3);
 
   // Set all the terms proportional to mass to be constant.  In the first
@@ -430,6 +442,7 @@ int main(int argc, const char *argv[]) {
   setConstant(gammaShape.termsProportionalToY(), true);
   setConstant(gaussMean.termsProportionalToY(), true);
   setConstant(gaussSigma.termsProportionalToY(), true);
+  setConstant(gaussSigmaL.termsProportionalToY(), true);
   setConstant(mixRaw.termsProportionalToY(), true);
 
   std::cout << "Fitting reduced model..." << std::endl;
@@ -451,8 +464,12 @@ int main(int argc, const char *argv[]) {
       //,Verbose(true)
       );
 
-  //plotSlices(*scaledLeg1Pt, model, binnedReducedData, conditionalVariables,
-  //    &canvas, "reduced_fit_mass_160_", 1, 155, 165, 4, 0, 3.14/2);
+  std::stringstream reducedMassFitPrefix;
+  reducedMassFitPrefix << "reduced_fit_mass_" << reducedMassMin
+    << "_" << reducedMassMax;
+
+  plotSlices(*scaledLeg1Pt, model, binnedReducedData, conditionalVariables,
+      &canvas,reducedMassFitPrefix.str(), 1, reducedMassMin, reducedMassMax, 4, 0, 3.14/2);
 
   // Now do a fit to get the terms proportional to the mass.
 
@@ -478,6 +495,7 @@ int main(int argc, const char *argv[]) {
   setConstant(gammaShape.termsProportionalToY(), false);
   setConstant(gaussMean.termsProportionalToY(), false);
   setConstant(gaussSigma.termsProportionalToY(), false);
+  setConstant(gaussSigmaL.termsProportionalToY(), false);
   setConstant(mixRaw.termsProportionalToY(), false);
 
   // And enable the terms proportional to the mass.
@@ -485,6 +503,7 @@ int main(int argc, const char *argv[]) {
   setConstant(gammaShape.termsProportionalToX(), true);
   setConstant(gaussMean.termsProportionalToX(), true);
   setConstant(gaussSigma.termsProportionalToX(), true);
+  setConstant(gaussSigmaL.termsProportionalToX(), true);
   setConstant(mixRaw.termsProportionalToX(), true);
 
   // Don't let these blow up.
@@ -508,7 +527,7 @@ int main(int argc, const char *argv[]) {
 
   model.fitTo(*backToBackData,
       ConditionalObservables(conditionalVariables),
-      NumCPU(8), Verbose(true), InitialHesse(false));
+      NumCPU(8), Verbose(false), InitialHesse(false));
 
   plotSlices(*scaledLeg1Pt, model, backToBackBinnedData, conditionalVariables,
       &canvas, "reduced_fit_back_to_back_", 5, 100, 300, 1, 0, 3.14/2);
@@ -523,13 +542,14 @@ int main(int argc, const char *argv[]) {
   setConstant(gammaShape.termsProportionalToX(), false);
   setConstant(gaussMean.termsProportionalToX(), false);
   setConstant(gaussSigma.termsProportionalToX(), false);
+  setConstant(gaussSigmaL.termsProportionalToX(), false);
   setConstant(mixRaw.termsProportionalToX(), false);
 
   std::cout << "Doing final fit" << std::endl;
 
   model.fitTo(*selectedData,
       ConditionalObservables(conditionalVariables),
-      NumCPU(8), Verbose(true), InitialHesse(false));
+      NumCPU(8), Verbose(false), InitialHesse(false));
 
   plotSlices(*scaledLeg1Pt, model, binnedSelectedData, conditionalVariables,
       &canvas, "final_fit_all_data", 5, 100, 300, 5, 0, 3.14/2);

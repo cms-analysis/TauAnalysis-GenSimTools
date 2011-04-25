@@ -97,9 +97,10 @@ void storeFitResults(std::vector<RooRealVar*>& fitParamCoeff, std::vector<double
   fitCoeffErr.resize(numFitParameter);
  
   for ( unsigned iParameter = 0; iParameter < numFitParameter; ++iParameter ) {
-    std::cout << "iParameter = " << iParameter << ": fitParamCoeff[iParameter] = " << fitParamCoeff[iParameter] << std::endl;
     fitCoeffVal[iParameter] = fitParamCoeff[iParameter]->getVal();
     fitCoeffErr[iParameter] = fitParamCoeff[iParameter]->getError();
+    std::cout << "iParameter = " << iParameter << " (" << fitParamCoeff[iParameter]->GetName() << "): " 
+	      << fitCoeffVal[iParameter] << " +/- " << fitCoeffErr[iParameter] << std::endl;
   }
 } 
 
@@ -133,24 +134,24 @@ struct fitManager
       prefitSkewedGaussian_(numPtBins), 
       prefitParamMix_(numPtBins),
       prefitModel_(numPtBins),
-      fitParamCoeffSmearedLandauMP_(6),
+      fitParamCoeffSmearedLandauMP_(5),
       fitParamSmearedLandauMP_(0),
-      fitParamCoeffSmearedLandauWidth_(6),
+      fitParamCoeffSmearedLandauWidth_(5),
       fitParamSmearedLandauWidth_(0),     
       fitSmearedLandauPdf_(0),
       fitParamSmearedLandauGMean_(0),
-      fitParamCoeffSmearedLandauGSigma_(6),
+      fitParamCoeffSmearedLandauGSigma_(5),
       fitParamSmearedLandauGSigma_(0),
       fitSmearedLandauGPdf_(0),
       fitSmearedLandau_(0),
-      fitParamCoeffSkewedGaussianMean_(6),
+      fitParamCoeffSkewedGaussianMean_(5),
       fitParamSkewedGaussianMean_(0),
-      fitParamCoeffSkewedGaussianSigma_(6),
+      fitParamCoeffSkewedGaussianSigma_(5),
       fitParamSkewedGaussianSigma_(0),
-      fitParamCoeffSkewedGaussianAlpha_(6),
+      fitParamCoeffSkewedGaussianAlpha_(5),
       fitParamSkewedGaussianAlpha_(0),
       fitSkewedGaussian_(0),
-      fitParamCoeffMix_(6),
+      fitParamCoeffMix_(5),
       fitParamMix_(0),
       fitModel_(0)
   {
@@ -613,8 +614,14 @@ struct fitManager
     options.Add(new RooCmdArg(RooFit::PrintEvalErrors(-1)));
     options.Add(new RooCmdArg(RooFit::Warnings(-1)));
     
-    fitModel_->fitTo(*dataset, options); 
-
+    std::cout << "--> starting fit..." << std::endl;
+    
+    //fitModel_->fitTo(*dataset, options);
+    fitModel_->fitTo(dataset_binned, options); 
+    
+    std::cout << " done." << std::endl;
+    std::cout << "--> making control plots..." << std::endl;
+    
     storeFitResults(fitParamCoeffSmearedLandauMP_, fitCoeffValSmearedLandauMP_, fitCoeffErrSmearedLandauMP_);
     storeFitResults(fitParamCoeffSmearedLandauWidth_, fitCoeffValSmearedLandauWidth_, fitCoeffErrSmearedLandauWidth_);
     storeFitResults(fitParamCoeffSmearedLandauGSigma_, fitCoeffValSmearedLandauGSigma_, fitCoeffErrSmearedLandauGSigma_);
@@ -658,6 +665,8 @@ struct fitManager
 	canvas->SaveAs(outputFileName_i.Data());
       }
     }
+
+    std::cout << " done." << std::endl;
 
     delete canvas;
   }
@@ -793,8 +802,8 @@ struct fitManager
 
 int main(int argc, const char* argv[])
 {
-  //TString inputFileNames_ntuple = "/data2/friis/PtBalanceNtupleData_v2/ptBalanceData_*.root";
-  TString inputFileNames_ntuple = "/data2/friis/PtBalanceNtupleData_v2/ptBalanceData_mass_200_ggAH.root";
+  TString inputFileNames_ntuple = "/data2/friis/PtBalanceNtupleData_v2/ptBalanceData_*.root";
+  //TString inputFileNames_ntuple = "/data2/friis/PtBalanceNtupleData_v2/ptBalanceData_mass_200_ggAH.root";
 
   TString inputFileName_histograms = "makeTauDecayKinePlots.root";
 
@@ -842,21 +851,31 @@ int main(int argc, const char* argv[])
    ********                   Define variabes and data                      ****
    *****************************************************************************/
 
-  RooRealVar leg1Energy("leg1Energy", "leg1Energy", 0., 350.);
-  RooRealVar leg1Pt("leg1Pt", "leg1Pt", 0., 250.);
+  RooRealVar leg1Energy("leg1Energy", "leg1Energy", 0., 300.);
+  RooRealVar leg1Pt("leg1Pt", "leg1Pt", 0., 200.);
   RooRealVar leg1VisPt("leg1VisPt", "leg1VisPt", 0., 200.);
   RooRealVar leg1VisEta("leg1VisEta", "leg1VisEta", -2.5, +2.5);
   RooRealVar leg1DecayMode("leg1DecayMode", "leg1DecayMode", -1.5, +11.5);
   RooRealVar leg1VisInvisAngleLab("leg1VisInvisAngleLab", "leg1VisInvisAngleLab", 0., 0.50);
   RooRealVar leg1VisInvisDeltaRLab("leg1VisInvisDeltaRLab", "leg1VisInvisDeltaRLab", 0., 0.50);
 
-  RooRealVar leg2Energy("leg2Energy", "leg2Energy", 0., 350.);
-  RooRealVar leg2Pt("leg2Pt", "leg2Pt", 0., 250.);
+  leg1Energy.setBins(100);
+  leg1Pt.setBins(100);
+  leg1VisInvisAngleLab.setBins(100);
+  leg1VisInvisDeltaRLab.setBins(100);
+
+  RooRealVar leg2Energy("leg2Energy", "leg2Energy", 0., 300.);
+  RooRealVar leg2Pt("leg2Pt", "leg2Pt", 0., 200.);
   RooRealVar leg2VisPt("leg2VisPt", "leg2VisPt", 0., 200.);
   RooRealVar leg2VisEta("leg2VisEta", "leg2VisEta", -2.5, +2.5);
   RooRealVar leg2DecayMode("leg2DecayMode", "leg2DecayMode", -1.5, +11.5);
   RooRealVar leg2VisInvisAngleLab("leg2VisInvisAngleLab", "leg2VisInvisAngleLab", 0., 0.50);
   RooRealVar leg2VisInvisDeltaRLab("leg2VisInvisDeltaRLab", "leg2VisInvisDeltaRLab", 0., 0.50);
+
+  leg2Energy.setBins(100);
+  leg2Pt.setBins(100);
+  leg2VisInvisAngleLab.setBins(100);
+  leg2VisInvisDeltaRLab.setBins(100);
 
   TObjArray variables;
   variables.Add(&leg1Energy);
@@ -877,9 +896,8 @@ int main(int argc, const char* argv[])
   RooAbsData* dataset_all = new RooDataSet("dataset", "datasetset", RooArgSet(variables), RooFit::Import(*dataTree));
   std::cout << "Processing " << dataset_all->numEntries() << " TTree entries..." << std::endl;
 
-  //RooAbsData* dataset_selected = dataset_all->reduce(visMomCuts);
-  //std::cout << "Selected " << dataset_selected->numEntries() << " TTree entries..." << std::endl;
-  RooAbsData* dataset_selected = 0;
+  RooAbsData* dataset_selected = dataset_all->reduce(visMomCuts);
+  std::cout << "Selected " << dataset_selected->numEntries() << " TTree entries..." << std::endl;
 
   std::map<std::string, fitManager*> fitResults;
 

@@ -209,7 +209,9 @@ RooArgList buildVariableCollection(size_t nVars, const std::string& namebase,
 
 void plotSlices(const RooRealVar& toPlot,
     const RooAbsPdf& fittedModel, RooAbsData& data,
-    const RooArgSet& conditionalVars, TPad* pad, const std::string& prefix,
+    const RooArgSet& conditionalVars,
+    const RooArgSet& binningVars,
+    TPad* pad, const std::string& prefix,
     size_t massSlices, double massLow, double massHigh,
     size_t phiSlices, double phiLow, double phiHigh) {
 
@@ -237,7 +239,7 @@ void plotSlices(const RooRealVar& toPlot,
     std::stringstream massRangeStr;
     massRangeStr << "(" << minMass << " - " << maxMass << ")";
     std::cout << " In mass slice " << iMass << massRangeStr.str() <<
-      "there are " << massSlice->numEntries() << " entries." << std::endl;
+      "there are " << massSlice->numEntries() << " entries " << std::endl;
 
     for (size_t iPhi = 0; iPhi < phiSlices; ++iPhi) {
       double minPhi = phiLow + iPhi*phiSliceSize;
@@ -251,11 +253,16 @@ void plotSlices(const RooRealVar& toPlot,
       std::cout << " In phi slice " << iPhi << phiRangeStr.str() <<
         "there are " << phiSlice->numEntries() << " entries." << std::endl;
 
+      std::cout << "Binning final slice" << std::endl;
+      RooDataHist binnedSlice("binnedSlice", "binnedSlice",
+          binningVars, *phiSlice);
+
       std::auto_ptr<RooPlot> frame(toPlot.frame(Range(0, 4.0)));
-      phiSlice->plotOn(frame.get());
-      fittedModel.plotOn(frame.get(), ProjWData(conditionalVars, *phiSlice));
-      fittedModel.plotOn(frame.get(), ProjWData(conditionalVars, *phiSlice),
-          Components("*gauss*"), LineStyle(kDotted)) ;
+      //phiSlice->plotOn(frame.get());
+      binnedSlice.plotOn(frame.get());
+      fittedModel.plotOn(frame.get(), ProjWData(conditionalVars, binnedSlice));
+      fittedModel.plotOn(frame.get(), ProjWData(conditionalVars, binnedSlice),
+          Components("*Gauss*"), LineColor(kRed)) ;
       std::stringstream plotTitle;
       plotTitle << " Leg1Pt for mass " << massRangeStr.str()
         << " and #Delta#phi " << phiRangeStr.str();
@@ -287,6 +294,7 @@ void plotFitResults(const std::vector<PreFitResult>& results,
 
   // Loop overall the mass/phi slices
   for (size_t iRes = 0; iRes < results.size(); ++iRes) {
+    std::cout << "Plotting result #" << iRes << std::endl;
     const PreFitResult& result = results[iRes];
     assert(result.result());
     const RooArgList& pars = result.result()->floatParsFinal();
@@ -498,16 +506,19 @@ int main(int argc, const char *argv[]) {
 
   std::cout << "Fitting reduced model..." << std::endl;
   RooArgSet conditionalVariables(*dPhi, *scaledMass);
+  RooArgSet binningVars(*dPhi, *scaledLeg1Pt, *scaledMass);
   std::cout << "Beginning pre-fit" << std::endl;
 
   std::vector<PreFitResult> fitResults;
 
-  size_t nMassSlices = 10;
-  double lowestMass = 100;
-  double highestMass = 300;
+  size_t nMassSlices = 20;
+  double lowestMass = 95;
+  double highestMass = 295;
   for (size_t iMassSlice = 0; iMassSlice < nMassSlices; ++iMassSlice) {
-    double reducedMassMin = lowestMass;
-    double reducedMassMax = lowestMass + (highestMass-lowestMass)/nMassSlices;
+    double reducedMassMin = lowestMass +
+      iMassSlice*(highestMass-lowestMass)/nMassSlices;
+    double reducedMassMax = lowestMass +
+      (iMassSlice+1)*(highestMass-lowestMass)/nMassSlices;
     double nominalMass = (reducedMassMax - reducedMassMin)*0.5 + reducedMassMin;
 
     std::stringstream reducedMassCut;
@@ -515,14 +526,23 @@ int main(int argc, const char *argv[]) {
       << reducedMassMin;
 
     std::auto_ptr<RooAbsData> reducedDataSet(selectedData->reduce(
-        reducedMassCut.str().c_str()));
+          binningVars,
+          reducedMassCut.str().c_str()));
     std::cout << "Making mass slice data set with cut "
       << reducedMassCut.str() << " and "
       << reducedDataSet->numEntries() << " entries" <<  std::endl;
 
+    scaledMass->setBins(20);
+    dPhi->setBins(30);
+    scaledLeg1Pt->setRange(0, 5);
+    scaledLeg1Pt->setBins(100);
+
     RooDataHist binnedReducedData("binnedReducedData", "binnedReducedData",
-        RooArgSet(*dPhi, *scaledLeg1Pt, *scaledMass),
+        binningVars,
         *reducedDataSet);
+
+    std::cout << " The binned data has " << binnedReducedData.numEntries()
+      << " bins and " << binnedReducedData.sum(true) << "entries" << std::endl;
 
     RooFitResult* result = model.fitTo(binnedReducedData,
         ConditionalObservables(conditionalVariables),
@@ -535,7 +555,8 @@ int main(int argc, const char *argv[]) {
     fitResults.push_back(PreFitResult(result, reducedMassFitPrefix.str(),
           nominalMass));
 
-    plotSlices(*scaledLeg1Pt, model, binnedReducedData, conditionalVariables,
+    plotSlices(*scaledLeg1Pt, model, *reducedDataSet,
+        conditionalVariables, binningVars,
         &canvas,reducedMassFitPrefix.str(), 1, reducedMassMin, reducedMassMax,
         4, 0, 3.14/2);
   }
@@ -603,12 +624,14 @@ int main(int argc, const char *argv[]) {
       NumCPU(8), Verbose(false), InitialHesse(false));
 
   plotSlices(*scaledLeg1Pt, model, backToBackBinnedData, conditionalVariables,
+      binningVars,
       &canvas, "reduced_fit_back_to_back_", 5, 100, 300, 1, 0, 3.14/2);
 
   RooDataHist binnedSelectedData("binnedSelectedData", "binnedSelectedData",
       RooArgSet(*dPhi, *scaledLeg1Pt, *scaledMass), *selectedData);
 
   plotSlices(*scaledLeg1Pt, model, binnedSelectedData, conditionalVariables,
+      binningVars,
       &canvas, "reduced_fit_all_data", 5, 100, 300, 5, 0, 3.14/2);
 
   // Reduce the binning
@@ -637,6 +660,7 @@ int main(int argc, const char *argv[]) {
       NumCPU(8), Verbose(false), InitialHesse(false));
 
   plotSlices(*scaledLeg1Pt, model, binnedSelectedData, conditionalVariables,
+      binningVars,
       &canvas, "final_fit_all_data", 5, 100, 300, 5, 0, 3.14/2);
 
   /*
@@ -646,6 +670,7 @@ int main(int argc, const char *argv[]) {
       RooArgSet(*dPhi, *scaledLeg1Pt, resonanceMass), *selectedData);
 
   plotSlices(*scaledLeg1Pt, modelDPhi, binnedData, conditionalVariables,
+      binningVars,
       &canvas, "reduced_fit", 3, 100, 300, 3, 0, 3.14/2);
 
   std::cout << "Now fitting full model...." << std::endl;
@@ -654,6 +679,7 @@ int main(int argc, const char *argv[]) {
       NumCPU(5));
 
   plotSlices(*scaledLeg1Pt, model, binnedData, conditionalVariables,
+      binningVars,
       &canvas, "full_fit", 5, 100, 300, 5, 0, 3.14/2);
       */
 

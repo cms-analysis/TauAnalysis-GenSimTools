@@ -4,6 +4,7 @@
 #include <sstream>
 #include <memory>
 #include <boost/foreach.hpp>
+#include <boost/shared_ptr.hpp>
 
 #include "TFile.h"
 #include "TChain.h"
@@ -11,6 +12,7 @@
 #include "TCanvas.h"
 #include "TROOT.h"
 #include "TMath.h"
+#include "TGraphErrors.h"
 
 #include "RooPlot.h"
 #include "RooRealVar.h"
@@ -19,6 +21,7 @@
 #include "RooArgSet.h"
 #include "RooAddPdf.h"
 #include "RooDataHist.h"
+#include "RooFitResult.h"
 
 // PDFs
 #include "RooGaussian.h"
@@ -26,9 +29,30 @@
 #include "RooGamma.h"
 #include "RooMsgService.h"
 
-#include "TauAnalysis/CandidateTools/interface/NSVfitPtBalancePdfs.h"
+//#include "TauAnalysis/CandidateTools/interface/NSVfitPtBalancePdfs.h"
 
 using namespace RooFit;
+
+// Simple class to hold a RooFitResult + a description and slice point.  Takes
+// ownership of the RooFitResult
+
+class PreFitResult {
+  public:
+    PreFitResult(RooFitResult* result, const std::string& description,
+        double slicePoint):
+      result_(result),
+      description_(description),
+      slicePoint_(slicePoint) {}
+
+    double slicePoint() const { return slicePoint_; }
+    const std::string& description() const { return description_; }
+    const RooFitResult* result() const { return result_.get(); }
+
+  private:
+    boost::shared_ptr<RooFitResult> result_;
+    std::string description_;
+    double slicePoint_;
+};
 
 class RooDoublePolyVar : public RooAbsReal {
   public:
@@ -245,6 +269,47 @@ void plotSlices(const RooRealVar& toPlot,
   }
 }
 
+void plotFitResults(const std::vector<PreFitResult>& results,
+    TPad* pad, const std::string& prefix) {
+  if (!results.size())
+    return;
+  typedef std::map<std::string, TGraphErrors> GraphMap;
+  GraphMap graphs;
+  // Build all of the initial graphs
+  const RooFitResult* firstResult = results[0].result();
+  assert(firstResult);
+  for (int iPar = 0; iPar < firstResult->floatParsFinal().getSize(); ++iPar){
+    std::cout << "Building graph for fit parameter: ";
+    std::string name = firstResult->floatParsFinal().at(iPar)->GetName();
+    std::cout << name << std::endl;
+    graphs[name] = TGraphErrors(results.size());
+  }
+
+  // Loop overall the mass/phi slices
+  for (size_t iRes = 0; iRes < results.size(); ++iRes) {
+    const PreFitResult& result = results[iRes];
+    assert(result.result());
+    const RooArgList& pars = result.result()->floatParsFinal();
+    for (int iPar = 0; iPar < pars.getSize(); ++iPar){
+      std::string name = pars.at(iPar)->GetName();
+      const RooRealVar* var = dynamic_cast<const RooRealVar*>(pars.at(iPar));
+      assert(var);
+      double x = result.slicePoint();
+      graphs[name].SetPoint(iRes, x, var->getVal());
+      graphs[name].SetPointError(iRes, 0, var->getError());
+    }
+  }
+  BOOST_FOREACH(GraphMap::value_type& graph, graphs) {
+    std::stringstream outputName;
+    outputName << prefix << "_" << graph.first << ".png";
+    pad->cd();
+    graph.second.SetMarkerStyle(20);
+    graph.second.SetMarkerSize(2);
+    graph.second.Draw("ape");
+    pad->SaveAs(outputName.str().c_str());
+  }
+}
+
 int main(int argc, const char *argv[]) {
   if (argc < 2) {
     std::cerr << "Usage: ./run_fit file_glob" << std::endl;
@@ -323,21 +388,7 @@ int main(int argc, const char *argv[]) {
   std::cout << "After analysis selection data has "
     << selectedData->numEntries() << "entries" <<  std::endl;
 
-  double reducedMassMin = 245;
-  double reducedMassMax = 255;
-
-  std::stringstream reducedMassCut;
-  reducedMassCut << reducedMassMax << " > resonanceMass && resonanceMass > "
-    << reducedMassMin;
-
-  RooAbsData* reducedDataSet = selectedData->reduce(
-      reducedMassCut.str().c_str());
-
   RooAbsData* backToBackData = selectedData->reduce("dPhi < 0.03");
-
-  std::cout << "Making reduced data set with "
-    << reducedDataSet->numEntries() << " entries" <<  std::endl;
-
   std::cout << "Making back-to-back data set with "
     << backToBackData->numEntries() << " entries" <<  std::endl;
 
@@ -447,29 +498,49 @@ int main(int argc, const char *argv[]) {
 
   std::cout << "Fitting reduced model..." << std::endl;
   RooArgSet conditionalVariables(*dPhi, *scaledMass);
-  std::cout << "Begining fit" << std::endl;
+  std::cout << "Beginning pre-fit" << std::endl;
 
-  RooDataHist binnedReducedData("binnedReducedData", "binnedReducedData",
-      //RooArgSet(*dPhi, *scaledLeg1Pt, resonanceMass, *scaledMass),
-      RooArgSet(*dPhi, *scaledLeg1Pt, *scaledMass),
-      *reducedDataSet);
+  std::vector<PreFitResult> fitResults;
 
-  std::auto_ptr<RooPlot> scaledMassFrame(scaledMass->frame(Range(0., 10.)));
-  binnedReducedData.plotOn(scaledMassFrame.get());
-  scaledMassFrame->Draw();
-  canvas.SaveAs("scaledMassReduced.png");
+  size_t nMassSlices = 10;
+  double lowestMass = 100;
+  double highestMass = 300;
+  for (size_t iMassSlice = 0; iMassSlice < nMassSlices; ++iMassSlice) {
+    double reducedMassMin = lowestMass;
+    double reducedMassMax = lowestMass + (highestMass-lowestMass)/nMassSlices;
+    double nominalMass = (reducedMassMax - reducedMassMin)*0.5 + reducedMassMin;
 
-  model.fitTo(binnedReducedData, ConditionalObservables(conditionalVariables),
-      NumCPU(8)
-      //,Verbose(true)
-      );
+    std::stringstream reducedMassCut;
+    reducedMassCut << reducedMassMax << " > resonanceMass && resonanceMass > "
+      << reducedMassMin;
 
-  std::stringstream reducedMassFitPrefix;
-  reducedMassFitPrefix << "reduced_fit_mass_" << reducedMassMin
-    << "_" << reducedMassMax;
+    std::auto_ptr<RooAbsData> reducedDataSet(selectedData->reduce(
+        reducedMassCut.str().c_str()));
+    std::cout << "Making mass slice data set with cut "
+      << reducedMassCut.str() << " and "
+      << reducedDataSet->numEntries() << " entries" <<  std::endl;
 
-  plotSlices(*scaledLeg1Pt, model, binnedReducedData, conditionalVariables,
-      &canvas,reducedMassFitPrefix.str(), 1, reducedMassMin, reducedMassMax, 4, 0, 3.14/2);
+    RooDataHist binnedReducedData("binnedReducedData", "binnedReducedData",
+        RooArgSet(*dPhi, *scaledLeg1Pt, *scaledMass),
+        *reducedDataSet);
+
+    RooFitResult* result = model.fitTo(binnedReducedData,
+        ConditionalObservables(conditionalVariables),
+        NumCPU(8), Save(true));
+
+    std::stringstream reducedMassFitPrefix;
+    reducedMassFitPrefix << "reduced_fit_mass_" << reducedMassMin
+      << "_" << reducedMassMax;
+
+    fitResults.push_back(PreFitResult(result, reducedMassFitPrefix.str(),
+          nominalMass));
+
+    plotSlices(*scaledLeg1Pt, model, binnedReducedData, conditionalVariables,
+        &canvas,reducedMassFitPrefix.str(), 1, reducedMassMin, reducedMassMax,
+        4, 0, 3.14/2);
+  }
+
+  plotFitResults(fitResults, &canvas, "dPhi_parameters_versus_mass");
 
   // Now do a fit to get the terms proportional to the mass.
 
@@ -486,9 +557,11 @@ int main(int argc, const char *argv[]) {
       RooArgSet(*dPhi, *scaledLeg1Pt, *scaledMass),
       *backToBackData);
 
+  /*
   backToBackBinnedData.plotOn(scaledMassFrame.get());
   scaledMassFrame->Draw();
   canvas.SaveAs("scaledMassBackToBack.png");
+  */
 
   // Now set the DPhi proportional terms constant.
   setConstant(gammaScale.termsProportionalToY(), false);
@@ -538,6 +611,18 @@ int main(int argc, const char *argv[]) {
   plotSlices(*scaledLeg1Pt, model, binnedSelectedData, conditionalVariables,
       &canvas, "reduced_fit_all_data", 5, 100, 300, 5, 0, 3.14/2);
 
+  // Reduce the binning
+  scaledLeg1Pt->setRange(0, 5);
+  scaledLeg1Pt->setBins(50);
+  dPhi->setBins(25);
+  scaledMass->setBins(20);
+
+  RooDataHist binnedSelectedDataForFit("binnedSelectedDataForFit", "binnedSelectedDataForFit",
+      RooArgSet(*dPhi, *scaledLeg1Pt, *scaledMass), *selectedData);
+
+  std::cout << "The binned data for fitting has "
+    << binnedSelectedDataForFit.numEntries() << " bins." << std::endl;
+
   setConstant(gammaScale.termsProportionalToX(), false);
   setConstant(gammaShape.termsProportionalToX(), false);
   setConstant(gaussMean.termsProportionalToX(), false);
@@ -547,7 +632,7 @@ int main(int argc, const char *argv[]) {
 
   std::cout << "Doing final fit" << std::endl;
 
-  model.fitTo(*selectedData,
+  model.fitTo(binnedSelectedDataForFit,
       ConditionalObservables(conditionalVariables),
       NumCPU(8), Verbose(false), InitialHesse(false));
 

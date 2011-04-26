@@ -7,6 +7,7 @@
 #include "RooDataHist.h"
 #include "RooGaussian.h"
 #include "RooLandau.h"
+#include "RooGamma.h"
 #include "RooFFTConvPdf.h"
 #include "RooGenericPdf.h"
 #include "RooFormulaVar.h"
@@ -14,6 +15,8 @@
 #include "RooCmdArg.h"
 #include "RooFit.h"
 #include "RooLinkedList.h"
+#include "RooFitResult.h"
+#include "RooWorkspace.h"
 #include "RooPlot.h"
 
 #include <TString.h>
@@ -33,6 +36,7 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
+#include <sstream>
 
 enum { kElectron_Muon, 
        kOneProng0Pi0, kOneProng1Pi0, kOneProng2Pi0, kOneProngGt0Pi0, 
@@ -89,7 +93,7 @@ void storePrefitResults(RooRealVar* fitParameter, double ptMin, double ptMax, TG
 void storeFitResults(std::vector<RooRealVar*>& fitParamCoeff, std::vector<double>& fitCoeffVal, std::vector<double>& fitCoeffErr)
 {
   std::cout << "<storeFitResults>:" << std::endl;
-
+//
   unsigned numFitParameter = fitParamCoeff.size();
   std::cout << " numFitParameter = " << numFitParameter << std::endl;
   
@@ -173,12 +177,12 @@ struct fitManager
     TString momParametrizationTFormula = 
       "(1./(x*x*x*x))*([0] + [1]*x + [2]*(2.0*x*x - 1.0)" 
       " + [3]*(4.0*x*x*x - 3.0*x) + [4]*(8.0*x*x*x*x - 8.0*x*x + 1.0))";
-    momParametrization_forTFormula_ = momParametrizationTFormula;
+    momParametrization_forTFormula_ = TString("TMath::Abs(").Append(momParametrizationTFormula).Append(")");
     momParametrizationMix_forTFormula_ = TString("0.5*(1.0 + TMath::TanH(").Append(momParametrization_forTFormula_).Append("))");
     TString momParametrizationRooFit = 
       "(1./(@5*@5*@5*@5))*(@0 + @1*@5 + @2*(2.0*@5*@5 - 1.0)" 
       " + @3*(4.0*@5*@5*@5 - 3.0*@5) + @4*(8.0*@5*@5*@5*@5 - 8.0*@5*@5 + 1.0))";
-    momParametrization_forRooFit_ = momParametrizationRooFit;
+    momParametrization_forRooFit_ = TString("TMath::Abs(").Append(momParametrizationRooFit).Append(")");
     momParametrizationMix_forRooFit_ = TString("0.5*(1.0 + TMath::TanH(").Append(momParametrization_forRooFit_).Append("))");
     
     momParamSmearedLandauMP_ = bookTF1("smearedLandauMP", momParametrization_forTFormula_);
@@ -359,15 +363,23 @@ struct fitManager
       if ( histogramRMS  > 0.15 ) histogramRMS  = 0.15;
       std::cout << " histogramRMS = " << histogramRMS << std::endl;
 
-      prefitParamSmearedLandauMP_[iPtBin] = buildPrefitParameter("smearedLandauMP", ptBinName, 1.2*histogramMean, -0.20, +0.20);
-      prefitParamSmearedLandauWidth_[iPtBin] = buildPrefitParameter("smearedLandauWidth", ptBinName, histogramRMS, 0., 0.20);
+      //prefitParamSmearedLandauMP_[iPtBin] = buildPrefitParameter("smearedLandauMP", ptBinName, 2.0*histogramMean, -0.50, +0.50);
+      //prefitParamSmearedLandauWidth_[iPtBin] = buildPrefitParameter("smearedLandauWidth", ptBinName, 0.1, 1.e-4, 1.);
+      prefitParamSmearedLandauMP_[iPtBin] = buildPrefitParameter("smearedLandauMP", ptBinName, 5., 0., 10.);
+      prefitParamSmearedLandauWidth_[iPtBin] = buildPrefitParameter("smearedLandauWidth", ptBinName, 5., 0., 10.);
       TString smearedLandauPdfName =
 	Form("smearedLandauPdf_%s_%s_%s_%s", decayMode_string.Data(), ptBinName.Data(), dR_->GetName(), label_.Data());
+      //prefitSmearedLandauPdf_[iPtBin] = 
+      //  new RooLandau(smearedLandauPdfName.Data(), smearedLandauPdfName.Data(), *dR_, 
+      //		*prefitParamSmearedLandauMP_[iPtBin], *prefitParamSmearedLandauWidth_[iPtBin]);
+      RooConstVar* prefitParamSmearedLandauMu = buildConstPrefitParameter("smearedLandauMu", ptBinName, 0.);
       prefitSmearedLandauPdf_[iPtBin] = 
-	new RooLandau(smearedLandauPdfName.Data(), smearedLandauPdfName.Data(), *dR_, 
-		      *prefitParamSmearedLandauMP_[iPtBin], *prefitParamSmearedLandauWidth_[iPtBin]);
-      prefitParamSmearedLandauGMean_[iPtBin] = buildConstPrefitParameter("smearedLandauGMean", ptBinName, 0.);
-      prefitParamSmearedLandauGSigma_[iPtBin] = buildPrefitParameter("smearedLandauGSigma", ptBinName, histogramRMS, 0., 0.20);
+	new RooGamma(smearedLandauPdfName.Data(), smearedLandauPdfName.Data(), *dR_, 
+		     *prefitParamSmearedLandauMP_[iPtBin], *prefitParamSmearedLandauWidth_[iPtBin], 
+		     *prefitParamSmearedLandauMu);
+      //prefitParamSmearedLandauGMean_[iPtBin] = buildConstPrefitParameter("smearedLandauGMean", ptBinName, 0.);
+      prefitParamSmearedLandauGMean_[iPtBin] = buildPrefitParameter("smearedLandauGMean", ptBinName, 1.2*histogramMean, 0., 0.25);
+      prefitParamSmearedLandauGSigma_[iPtBin] = buildPrefitParameter("smearedLandauGSigma", ptBinName, histogramRMS, 0., 0.25);
       TString smearedLandauGPdfName =
 	Form("smearedLandauGPdf_%s_%s_%s_%s", decayMode_string.Data(), ptBinName.Data(), dR_->GetName(), label_.Data());
       prefitSmearedLandauGPdf_[iPtBin] = 
@@ -375,21 +387,38 @@ struct fitManager
 			*prefitParamSmearedLandauGMean_[iPtBin], *prefitParamSmearedLandauGSigma_[iPtBin]);
       TString smearedLandauName =
 	Form("smearedLandau_%s_%s_%s_%s", decayMode_string.Data(), ptBinName.Data(), dR_->GetName(), label_.Data());
+      //prefitSmearedLandau_[iPtBin] = 
+      //  new RooFFTConvPdf(smearedLandauName.Data(), smearedLandauName.Data(), *dR_, 
+      //		    *prefitSmearedLandauPdf_[iPtBin], *prefitSmearedLandauGPdf_[iPtBin]);
+      RooRealVar* prefitParamSmearedLandauMix_ = buildPrefitParameter("smearedLandauMix", ptBinName, 0.90, 0., 1.);
       prefitSmearedLandau_[iPtBin] = 
-	new RooFFTConvPdf(smearedLandauName.Data(), smearedLandauName.Data(), *dR_, 
-			  *prefitSmearedLandauPdf_[iPtBin], *prefitSmearedLandauGPdf_[iPtBin]);
+	new RooAddPdf(smearedLandauName.Data(), smearedLandauName.Data(), 
+		      *prefitSmearedLandauPdf_[iPtBin], *prefitSmearedLandauGPdf_[iPtBin], *prefitParamSmearedLandauMix_);
+      //  new RooLandau(smearedLandauName.Data(), smearedLandauName.Data(), *dR_,
+      //		      *prefitParamSmearedLandauMP_[iPtBin], *prefitParamSmearedLandauWidth_[iPtBin]);
+      //prefitSmearedLandau_[iPtBin] = 
+      //	new RooGamma(smearedLandauName.Data(), smearedLandauName.Data(), *dR_,
+      //		     *prefitParamSmearedLandauMP_[iPtBin], *prefitParamSmearedLandauWidth_[iPtBin], 
+      //		     *prefitParamSmearedLandauGMean_[iPtBin]);
+      //prefitSmearedLandau_[iPtBin] = 
+      //	new RooGenericPdf(smearedLandauName.Data(), smearedLandauName.Data(), 
+      //			  "TMath::Vavilov(@0, @1, @2)",
+      //			  RooArgList(*dR_, *prefitParamSmearedLandauMP_[iPtBin], *prefitParamSmearedLandauWidth_[iPtBin]));
 
-      prefitParamSkewedGaussianMean_[iPtBin] = buildPrefitParameter("skewedGaussianMean", ptBinName, 0.8*histogramMean, 0., 0.20);
-      prefitParamSkewedGaussianSigma_[iPtBin] = buildPrefitParameter("skewedGaussianSigma", ptBinName, histogramRMS, 0.01, 0.20);
+      prefitParamSkewedGaussianMean_[iPtBin] = buildPrefitParameter("skewedGaussianMean", ptBinName, 0.8*histogramMean, 0., 0.25);
+      prefitParamSkewedGaussianSigma_[iPtBin] = buildPrefitParameter("skewedGaussianSigma", ptBinName, histogramRMS, 0.01, 0.25);
       prefitParamSkewedGaussianAlpha_[iPtBin] = buildPrefitParameter("skewedGaussianAlpha", ptBinName, 0., -2., +2.);
       TString skewedGaussianName = 
 	Form("skewedGaussian_%s_%s_%s_%s", decayMode_string.Data(), ptBinName.Data(), dR_->GetName(), label_.Data());
+      //prefitSkewedGaussian_[iPtBin] = 
+      //  new RooGenericPdf(skewedGaussianName.Data(), skewedGaussianName.Data(), 
+      //			  "TMath::Gaus(@0, @1, @2)*(1.0 + TMath::Erf(@3*((@0 - @1)/@2)/TMath::Sqrt(2)))",
+      //			  RooArgList(*dR_, *prefitParamSkewedGaussianMean_[iPtBin], *prefitParamSkewedGaussianSigma_[iPtBin], 
+      //				     *prefitParamSkewedGaussianAlpha_[iPtBin])); 
       prefitSkewedGaussian_[iPtBin] = 
-	new RooGenericPdf(skewedGaussianName.Data(), skewedGaussianName.Data(), 
-			  "TMath::Gaus(@0, @1, @2)*(1.0 + TMath::Erf(@3*((@0 - @1)/@2)/TMath::Sqrt(2)))",
-			  RooArgList(*dR_, *prefitParamSkewedGaussianMean_[iPtBin], *prefitParamSkewedGaussianSigma_[iPtBin], 
-				     *prefitParamSkewedGaussianAlpha_[iPtBin])); 
-      
+       new RooGaussian(skewedGaussianName.Data(), skewedGaussianName.Data(), *dR_,
+      			*prefitParamSkewedGaussianMean_[iPtBin], *prefitParamSkewedGaussianSigma_[iPtBin]);
+
       prefitParamMix_[iPtBin] = buildPrefitParameter("mix", ptBinName, 0.50, 0., 1.);
   
       TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), ptBinName.Data(), dR_->GetName(), label_.Data());
@@ -446,20 +475,12 @@ struct fitManager
       prefitModel_[iPtBin]->plotOn(frame, RooFit::Components(*prefitSmearedLandau_[iPtBin]), RooFit::LineStyle(kDashed));
       prefitModel_[iPtBin]->plotOn(frame, RooFit::Components(*prefitSkewedGaussian_[iPtBin]), RooFit::LineStyle(kDashDotted));
 
-      RooConstVar* approxSmearedLandauArea = buildConstPrefitParameter("approxSmearedLandauArea", ptBinName, 1.);
-      SmoothLandau_x_GaussPdf* approxSmearedLandau = 
-	new SmoothLandau_x_GaussPdf("approxSmearedLandau", "approxSmearedLandau", *dR_,
-				    *prefitParamSmearedLandauWidth_[iPtBin], *prefitParamSmearedLandauMP_[iPtBin], 
-				    *approxSmearedLandauArea, *prefitParamSmearedLandauGSigma_[iPtBin]);
-      approxSmearedLandau->plotOn(frame, RooFit::LineStyle(kDashed), RooFit::LineColor(kRed));
-
       frame->Draw();
 
       TLegend legend(0.60, 0.64, 0.89, 0.89, "", "brNDC");
       legend.SetBorderSize(0);
       legend.SetFillColor(0);
       TObject* graphSmearedLandau        = 0;
-      TObject* graphSmearedLandau_approx = 0;
       TObject* graphSkewedGaussian       = 0;
       TObject* graphSum                  = 0;
       TObject* graphData                 = 0;
@@ -467,13 +488,11 @@ struct fitManager
 	TString itemName = frame->nameOf(iItem);
 	TObject* item = frame->findObject(itemName.Data());
 	if      ( itemName.Contains("smearedLandau")       ) graphSmearedLandau        = item;
-	else if ( itemName.Contains("approxSmearedLandau") ) graphSmearedLandau_approx = item;
 	else if ( itemName.Contains("skewedGaussian")      ) graphSkewedGaussian       = item;
 	else if ( itemName.Contains("pdf")                 ) graphSum                  = item;
 	else if ( itemName.Contains("datahist")            ) graphData                 = item; 
       }
       if ( graphSmearedLandau        != 0 ) legend.AddEntry(graphSmearedLandau,        "Landau #otimes Gaussian",         "l");
-      if ( graphSmearedLandau_approx != 0 ) legend.AddEntry(graphSmearedLandau_approx, "Landau #otimes Gaussian approx.", "l");
       if ( graphSkewedGaussian       != 0 ) legend.AddEntry(graphSkewedGaussian,       "skewed Gaussian",                 "l");
       if ( graphSum                  != 0 ) legend.AddEntry(graphSum,                  "Sum",                             "l");
       if ( graphData                 != 0 ) legend.AddEntry(graphData,                 "TAUOLA",                          "p");
@@ -485,9 +504,6 @@ struct fitManager
       canvas->Update();
   
       canvas->SaveAs(outputFileName_i.Data());
-
-      delete approxSmearedLandauArea;
-      delete approxSmearedLandau;
 
       delete datahist;
     }
@@ -610,16 +626,29 @@ struct fitManager
   
     RooLinkedList options;
     options.Add(new RooCmdArg(RooFit::ConditionalObservables(*mom_)));
-    options.Add(new RooCmdArg(RooFit::PrintLevel(-1)));
-    options.Add(new RooCmdArg(RooFit::PrintEvalErrors(-1)));
-    options.Add(new RooCmdArg(RooFit::Warnings(-1)));
+    options.Add(new RooCmdArg(RooFit::Save(true)));
+    //options.Add(new RooCmdArg(RooFit::PrintLevel(-1)));
+    //options.Add(new RooCmdArg(RooFit::PrintEvalErrors(-1)));
+    //options.Add(new RooCmdArg(RooFit::Warnings(-1)));
     
     std::cout << "--> starting fit..." << std::endl;
-    
-    //fitModel_->fitTo(*dataset, options);
-    fitModel_->fitTo(dataset_binned, options); 
-    
+/*    
+    //RooFitResult* fitResult = fitModel_->fitTo(*dataset, options);
+    RooFitResult* fitResult = fitModel_->fitTo(dataset_binned, options); 
+    std::cout << " fit status = " << fitResult->status() << " (converged = 0)" << std::endl;
+    delete fitResult;
+ */    
     std::cout << " done." << std::endl;
+
+    std::cout << "--> saving fit results..." << std::endl;
+    RooWorkspace* ws = new RooWorkspace("ws", "workspace");
+    ws->import(*fitModel_);
+    TString wsOutputFileName = outputFileName;
+    wsOutputFileName.ReplaceAll("plots/fitTauDecayKinePlots", "../../CandidateTools/data/mcTauDecayKine");
+    wsOutputFileName.ReplaceAll(".eps", "_ws.root");
+    ws->writeToFile(wsOutputFileName.Data());
+    std::cout << " done." << std::endl;
+
     std::cout << "--> making control plots..." << std::endl;
     
     storeFitResults(fitParamCoeffSmearedLandauMP_, fitCoeffValSmearedLandauMP_, fitCoeffErrSmearedLandauMP_);
@@ -649,12 +678,17 @@ struct fitManager
       TString frameTitle = Form("%s %s: P_{T} = %2.0f..%2.0f GeV", dR_->GetName(), decayMode_string.Data(), ptMin, ptMax);
       RooPlot* frame = dR_->frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(50));
       
-      TString ptBinName = Form("ptBin%2.0fto%2.0f", ptMin, ptMax);
-      mom_->setRange(ptBinName.Data(), ptMin, ptMax);
-
-      dataset->plotOn(frame, RooFit::CutRange(ptBinName));
+      TString ptSliceName = Form("ptSlice%2.0fto%2.0f", ptMin, ptMax);
+      std::stringstream ptSliceCut;
+      ptSliceCut << ptMin << " < " << mom_->GetName() << " && " << mom_->GetName() << " < " << ptMax;
       
-      fitModel_->plotOn(frame, RooFit::ProjWData(dataset_binned), RooFit::ProjectionRange(ptBinName));
+      RooAbsData* ptSliceDataset = dataset->reduce(ptSliceCut.str().data());
+      std::cout << "Selected " << ptSliceDataset->numEntries() << " TTree entries" 
+		<< " in slice " << Form("pT = %2.0f..%2.0f GeV", ptMin, ptMax) << "..." << std::endl;
+      RooDataHist ptSliceDataset_binned("ptSliceDataset_binned", "ptSliceDataset_binned", RooArgSet(*mom_, *dR_), *ptSliceDataset);
+      ptSliceDataset_binned.plotOn(frame);
+     
+      fitModel_->plotOn(frame, RooFit::ProjWData(RooArgSet(*mom_), ptSliceDataset_binned));
       
       frame->Draw();
 
@@ -710,17 +744,20 @@ struct fitManager
 
   std::vector<RooRealVar*> prefitParamSmearedLandauMP_;
   std::vector<RooRealVar*> prefitParamSmearedLandauWidth_;
-  std::vector<RooLandau*> prefitSmearedLandauPdf_;
-  std::vector<RooConstVar*> prefitParamSmearedLandauGMean_;
+  std::vector<RooAbsPdf*> prefitSmearedLandauPdf_;
+  //std::vector<RooConstVar*> prefitParamSmearedLandauGMean_;
+  std::vector<RooRealVar*> prefitParamSmearedLandauGMean_;
   std::vector<RooRealVar*> prefitParamSmearedLandauGSigma_;
-  std::vector<RooGaussian*> prefitSmearedLandauGPdf_;
-  std::vector<RooFFTConvPdf*> prefitSmearedLandau_;
+  std::vector<RooAbsPdf*> prefitSmearedLandauGPdf_;
+  //std::vector<RooFFTConvPdf*> prefitSmearedLandau_;
+  std::vector<RooAbsPdf*> prefitSmearedLandau_;
   std::vector<RooRealVar*> prefitParamSkewedGaussianMean_;
   std::vector<RooRealVar*> prefitParamSkewedGaussianSigma_;
   std::vector<RooRealVar*> prefitParamSkewedGaussianAlpha_;
-  std::vector<RooGenericPdf*> prefitSkewedGaussian_;
+  //std::vector<RooGenericPdf*> prefitSkewedGaussian_;
+  std::vector<RooAbsPdf*> prefitSkewedGaussian_;
   std::vector<RooRealVar*> prefitParamMix_;
-  std::vector<RooAddPdf*> prefitModel_;
+  std::vector<RooAbsPdf*> prefitModel_;
 
   TGraphErrors* prefitResultSmearedLandauMP_;
   TGraphErrors* prefitResultSmearedLandauWidth_;
@@ -892,12 +929,16 @@ int main(int argc, const char* argv[])
   variables.Add(&leg2DecayMode);
   variables.Add(&leg2VisInvisAngleLab);
   variables.Add(&leg2VisInvisDeltaRLab);
-
+/*
   RooAbsData* dataset_all = new RooDataSet("dataset", "datasetset", RooArgSet(variables), RooFit::Import(*dataTree));
   std::cout << "Processing " << dataset_all->numEntries() << " TTree entries..." << std::endl;
 
   RooAbsData* dataset_selected = dataset_all->reduce(visMomCuts);
   std::cout << "Selected " << dataset_selected->numEntries() << " TTree entries..." << std::endl;
+ */
+
+  RooAbsData* dataset_all = 0;
+  RooAbsData* dataset_selected = 0;
 
   std::map<std::string, fitManager*> fitResults;
 
@@ -928,7 +969,8 @@ int main(int argc, const char* argv[])
      ******** Run fit for leg1 with no cuts on visible decay products applied ****
      *****************************************************************************/
 
-    RooAbsData* dataset_leg1_all = dataset_all->reduce(leg1iDecayModeSelection.Data());
+    //RooAbsData* dataset_leg1_all = dataset_all->reduce(leg1iDecayModeSelection.Data());
+    RooAbsData* dataset_leg1_all = 0;
 
     TString fitManagerName_leg1_dR_all = Form("%s_%s_%s_%s", iDecayMode_string.Data(), "leg1", "dR", "all");
     if ( fitResults.find(fitManagerName_leg1_dR_all.Data()) == fitResults.end() ) {

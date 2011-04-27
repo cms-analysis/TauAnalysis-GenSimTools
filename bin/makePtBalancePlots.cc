@@ -58,18 +58,25 @@ class RooDoublePolyVar : public RooAbsReal {
   public:
     RooDoublePolyVar(const char* name, const char* title,
         RooAbsReal& x, RooAbsReal& y, RooArgList& coeffs,
-        size_t orderX, size_t orderY, bool takeAbs):
+        int orderXLow, int orderXHigh,
+        int orderYLow, int orderYHigh, bool takeAbs):
       RooAbsReal(name, title),
       x_("x", "Dependent x", this, x),
       y_("y", "Dependent y", this, y),
       coeffs_("coeffs", "List of coefficients", this),
-      orderX_(orderX), orderY_(orderY),takeAbs_(takeAbs) {
+      orderXLow_(orderXLow), orderYLow_(orderYLow),
+      orderXHigh_(orderXHigh), orderYHigh_(orderYHigh),
+      takeAbs_(takeAbs) {
         std::cout << "RooDoublePolyVar::ctor"
-          << " order X: " << orderX_
-          << " order Y: " << orderY_
+          << " order X low/high = " << orderXLow_ << "/" << orderXHigh_
+          << " order Y low/high = " << orderYLow_ << "/" << orderYHigh_
           << " Ncoeffecients: " << coeffs.getSize() << std::endl;
-        assert((orderX_+1)*(orderY_+1) == (size_t)coeffs.getSize());
-        for (int i = 0; i < coeffs.getSize(); i++) {
+
+        // Some coefficients may be unused
+        size_t nCoeffs = (orderXHigh_-orderXLow_+1)*(orderYHigh_-orderYLow_+1);
+
+        assert(nCoeffs <= (size_t)coeffs.getSize());
+        for (size_t i = 0; i < nCoeffs; i++) {
           RooAbsArg* toAdd = coeffs.at(i);
           std::cout << "Adding coefficient: " << toAdd->GetName() << std::endl;
           coeffs_.add(*toAdd);
@@ -82,8 +89,10 @@ class RooDoublePolyVar : public RooAbsReal {
       x_("x", this, other.x_),
       y_("y", this, other.y_),
       coeffs_("coeffs", this, other.coeffs_),
-      orderX_(other.orderX_),
-      orderY_(other.orderY_),
+      orderXLow_(other.orderXLow_),
+      orderYLow_(other.orderYLow_),
+      orderXHigh_(other.orderXHigh_),
+      orderYHigh_(other.orderYHigh_),
       takeAbs_(other.takeAbs_) {}
 
     TObject* clone(const char* newName) const {
@@ -95,8 +104,8 @@ class RooDoublePolyVar : public RooAbsReal {
       Double_t x = x_;
       Double_t y = y_;
       size_t coeffIndex = 0;
-      for (size_t iX = 0; iX < (orderX_+1); ++iX) {
-        for (size_t iY = 0; iY < (orderY_+1); ++iY) {
+      for (int iX = orderXLow_; iX < (orderXHigh_+1); ++iX) {
+        for (int iY = orderYLow_; iY < (orderYHigh_+1); ++iY) {
           const RooRealVar* coeff = dynamic_cast<const RooRealVar*>(
               coeffs_.at(coeffIndex));
           assert(coeff);
@@ -107,41 +116,38 @@ class RooDoublePolyVar : public RooAbsReal {
       return takeAbs_ ? std::abs(sum) : sum;
     }
 
-    // Get all the terms that are effected by X
-    RooArgList termsProportionalToX() const {
-      RooArgList output;
-      size_t coeffIndex = 0;
-      for (size_t iX = 0; iX < (orderX_+1); ++iX) {
-        for (size_t iY = 0; iY < (orderY_+1); ++iY) {
-          RooRealVar* coeff = dynamic_cast<RooRealVar*>(
-              coeffs_.at(coeffIndex));
-          assert(coeff);
-          coeffIndex++;
-          // Only add to the output list if there is no Y dependence
-          if (iX != 0) {
-            output.add(*coeff);
-          }
-        }
-      }
-      return output;
+    RooArgList termsProportionalToX(int order) const {
+      return termsProportionalToXImpl(order, false);
+    }
+    RooArgList termsProportionalToY(int order) const {
+      return termsProportionalToYImpl(order, false);
     }
 
+    // Get ALL terms proportional to X
+    RooArgList termsProportionalToX() const {
+      return termsProportionalToXImpl(-99, true);
+    }
+    // Get ALL terms proportional to Y
     RooArgList termsProportionalToY() const {
+      return termsProportionalToYImpl(-99, true);
+    }
+
+    RooRealVar& termProportionalTo(int xOrder, int yOrder) const {
       RooArgList output;
       size_t coeffIndex = 0;
-      for (size_t iX = 0; iX < (orderX_+1); ++iX) {
-        for (size_t iY = 0; iY < (orderY_+1); ++iY) {
+      for (int iX = orderXLow_; iX < (orderXHigh_+1); ++iX) {
+        for (int iY = orderYLow_; iY < (orderYHigh_+1); ++iY) {
           RooRealVar* coeff = dynamic_cast<RooRealVar*>(
               coeffs_.at(coeffIndex));
           assert(coeff);
           coeffIndex++;
-          // Only add to the output list if there is no Y dependence
-          if (iY != 0) {
-            output.add(*coeff);
+          if (iX == xOrder && iY == yOrder) {
+            return *coeff;
           }
         }
       }
-      return output;
+      assert(false);
+      return *dynamic_cast<RooRealVar*>(coeffs_.at(0));
     }
 
     RooRealVar& getTerm(size_t i) const {
@@ -151,11 +157,51 @@ class RooDoublePolyVar : public RooAbsReal {
     }
 
   private:
+    RooArgList termsProportionalToXImpl(int order, bool takeAll) const {
+      RooArgList output;
+      size_t coeffIndex = 0;
+      for (int iX = orderXLow_; iX < (orderXHigh_+1); ++iX) {
+        for (int iY = orderYLow_; iY < (orderYHigh_+1); ++iY) {
+          RooRealVar* coeff = dynamic_cast<RooRealVar*>(
+              coeffs_.at(coeffIndex));
+          assert(coeff);
+          coeffIndex++;
+          if (takeAll && iX != 0) {
+            output.add(*coeff);
+          } else if (iX == order) {
+            output.add(*coeff);
+          }
+        }
+      }
+      return output;
+    }
+
+    RooArgList termsProportionalToYImpl(int order, bool takeAll) const {
+      RooArgList output;
+      size_t coeffIndex = 0;
+      for (int iX = orderXLow_; iX < (orderXHigh_+1); ++iX) {
+        for (int iY = orderYLow_; iY < (orderYHigh_+1); ++iY) {
+          RooRealVar* coeff = dynamic_cast<RooRealVar*>(
+              coeffs_.at(coeffIndex));
+          assert(coeff);
+          coeffIndex++;
+          if (takeAll && iY != 0) {
+            output.add(*coeff);
+          } else if (iY == order) {
+            output.add(*coeff);
+          }
+        }
+      }
+      return output;
+    }
+
     RooRealProxy x_;
     RooRealProxy y_;
     RooListProxy coeffs_;
-    size_t orderX_;
-    size_t orderY_;
+    int orderXLow_;
+    int orderYLow_;
+    int orderXHigh_;
+    int orderYHigh_;
     bool takeAbs_;
 };
 
@@ -227,8 +273,8 @@ void plotSlices(const RooRealVar& toPlot,
     double minMass = massLow + iMass*massSliceSize;
     double maxMass = massLow + (iMass+1)*massSliceSize;
 
-    double scaledMinMass = (minMass - 60.0)/100.0;
-    double scaledMaxMass = (maxMass - 60.0)/100.0;
+    double scaledMinMass = (minMass)/100.0;
+    double scaledMaxMass = (maxMass)/100.0;
 
     std::stringstream massSliceCut;
     massSliceCut << scaledMinMass
@@ -371,8 +417,8 @@ int main(int argc, const char *argv[]) {
       "2.0*leg1Pt/resonanceMass", RooArgSet(leg1Pt, resonanceMass));
   RooFormulaVar dPhiFormula("dPhi", "#pi - #Delta #phi",
       "3.14159265 - leg1Leg2DPhi", RooArgSet(leg1Leg2DPhi));
-  RooFormulaVar scaledMassFormula("scaledMass", "(M-60)/100",
-      "(resonanceMass-60.0)/100.0", RooArgSet(resonanceMass));
+  RooFormulaVar scaledMassFormula("scaledMass", "(M)/100",
+      "(resonanceMass)/100.0", RooArgSet(resonanceMass));
 
   RooRealVar* scaledLeg1Pt = static_cast<RooRealVar*>(
       data.addColumn(scaledLeg1PtFunc));
@@ -400,6 +446,12 @@ int main(int argc, const char *argv[]) {
   std::cout << "Making back-to-back data set with "
     << backToBackData->numEntries() << " entries" <<  std::endl;
 
+  RooAbsData* backToBackSinlgeMassData = backToBackData->reduce(
+      "95 < resonanceMass && resonanceMass < 125");
+
+  std::cout << "Making back-to-back signalMass data set with "
+    << backToBackSinlgeMassData->numEntries() << " entries" <<  std::endl;
+
   RooRealVar zero("zero", "zero", 0, -1, 1);
   zero.setConstant(true);
 
@@ -423,23 +475,42 @@ int main(int argc, const char *argv[]) {
   RooArgList mixVars = buildVariableCollection(
       9, "Mix", "#Gauss sigma", 0, -10, 10);
 
+  /*
   RooDoublePolyVar gammaScale("GammaScale", "#Gamma scale",
-      *dPhi, *scaledMass, gammaScaleVars, 2, 2, true);
+      *dPhi, *scaledMass, gammaScaleVars, 0, 2, -1, 0, true);
 
   RooDoublePolyVar gammaShape("GammaShape", "#Gamma shape",
-      *dPhi, *scaledMass, gammaShapeVars, 2, 2, true);
+      *dPhi, *scaledMass, gammaShapeVars, 0, 2, -1, 1, true);
 
   RooDoublePolyVar gaussMean("GaussMean", "Gaussian mean",
-      *dPhi, *scaledMass, gaussMeanVars, 2, 2, true);
+      *dPhi, *scaledMass, gaussMeanVars, 0, 2, 0, 1, true);
 
   RooDoublePolyVar gaussSigma("GaussSigma", "Gaussian sigma",
-      *dPhi, *scaledMass, gaussSigmaVars, 2, 2, true);
+      *dPhi, *scaledMass, gaussSigmaVars, 0, 2, 0, 1, true);
 
   RooDoublePolyVar gaussSigmaL("GaussSigmaL", "Gaussian left sigma",
-      *dPhi, *scaledMass, gaussSigmaLVars, 2, 2, true);
+      *dPhi, *scaledMass, gaussSigmaLVars, 0,2, 0, 1, true);
 
   RooDoublePolyVar mixRaw("MixRaw", "Mixing fraction raw",
-      *dPhi, *scaledMass, mixVars, 2, 2, true);
+      *dPhi, *scaledMass, mixVars, 0, 2, 0, 2, false);
+      */
+  RooDoublePolyVar gammaScale("GammaScale", "#Gamma scale",
+      *dPhi, *scaledMass, gammaScaleVars, 0, 2, -1, 1, true);
+
+  RooDoublePolyVar gammaShape("GammaShape", "#Gamma shape",
+      *dPhi, *scaledMass, gammaShapeVars, 0, 2, -1, 1, true);
+
+  RooDoublePolyVar gaussMean("GaussMean", "Gaussian mean",
+      *dPhi, *scaledMass, gaussMeanVars, 0, 2, 0, 1, true);
+
+  RooDoublePolyVar gaussSigma("GaussSigma", "Gaussian sigma",
+      *dPhi, *scaledMass, gaussSigmaVars, 0, 2, 0, 1, true);
+
+  RooDoublePolyVar gaussSigmaL("GaussSigmaL", "Gaussian left sigma",
+      *dPhi, *scaledMass, gaussSigmaLVars, 0,2, 0, 1, true);
+
+  RooDoublePolyVar mixRaw("MixRaw", "Mixing fraction raw",
+      *dPhi, *scaledMass, mixVars, 0, 2, 0, 2, false);
 
   RooFormulaVar mix("Mix", "(1.0/3.14159)*atan(@0)+0.5", mixRaw);
 
@@ -458,33 +529,39 @@ int main(int argc, const char *argv[]) {
   model.Print("v");
 
   // Give good initial guess for the constant terms
-  gammaScale.getTerm(0) = 14;
-  gammaShape.getTerm(0) = 0.1;
-  gaussMean.getTerm(0) = 1.0;
-  gaussSigma.getTerm(0) = 0.1;
-  gaussSigmaL.getTerm(0) = 0.1;
-  mixRaw.getTerm(0) = 0.06;
-  mixRaw.getTerm(1) = -1.3;
+  // Figured out by eye.
+  gammaScale.termProportionalTo(0,0) = 14;
+  gammaScale.termProportionalTo(0,-1) = 2;
 
-  // Taken from a previous succesfull fit.
-  gammaScale.getTerm(0) = 1.40468e+01;
-  gammaScale.getTerm(3) = -1.10305e+01;
-  gammaScale.getTerm(6) = 3.36927e+00;
-  gammaShape.getTerm(0) = 6.17678e-02;
-  gammaShape.getTerm(3) = 5.82923e-02;
-  gammaShape.getTerm(6) = 4.82187e-02;
-  gaussMean.getTerm(0) = 9.56549e-01;
-  gaussMean.getTerm(3) = -1.12297e-01;
-  gaussMean.getTerm(6) = 8.45247e-02;
-  gaussSigma.getTerm(0) = 7.46661e-02;
-  gaussSigma.getTerm(3) = 1.92568e-01;
-  gaussSigma.getTerm(6) = -3.98217e-02;
-  gaussSigmaL.getTerm(0) = 7.46661e-02;
-  gaussSigmaL.getTerm(3) = 1.92568e-01;
-  gaussSigmaL.getTerm(6) = -3.98217e-02;
-  mixRaw.getTerm(0) = 4.11155e-01;
-  mixRaw.getTerm(3) = -2.74745e-01;
-  mixRaw.getTerm(6) = -1.02066e+00;
+  gammaShape.termProportionalTo(0, 0) = 0.06;
+  gammaShape.termProportionalTo(0, -1) = -0.01;
+  gammaShape.termProportionalTo(0, 1) = 0;
+
+  gaussMean.termProportionalTo(0, 0) = 0.98;
+  gaussMean.termProportionalTo(0, 1) = 0;
+
+  gaussSigma.termProportionalTo(0, 0) = 0.08;
+  gaussSigma.termProportionalTo(0, 1) = -0.01;
+
+  gaussSigmaL.termProportionalTo(0, 0) = 0.08;
+  gaussSigmaL.termProportionalTo(0, 1) = -0.01;
+
+  mixRaw.termProportionalTo(0, 0) = 0;
+  mixRaw.termProportionalTo(0, 1) = 0;
+
+  // Get functional dependence from a previous successful fit
+  setValue(gammaScale.termsProportionalToX(1), -1.10305e+01);
+  setValue(gammaScale.termsProportionalToX(2), 3.36927e+00);
+  setValue(gammaShape.termsProportionalToX(1), 5.82923e-02);
+  setValue(gammaShape.termsProportionalToX(2), 4.82187e-02);
+  setValue(gaussMean.termsProportionalToX(1), -1.12297e-01);
+  setValue(gaussMean.termsProportionalToX(2), 8.45247e-02);
+  setValue(gaussSigma.termsProportionalToX(1), 1.92568e-01);
+  setValue(gaussSigma.termsProportionalToX(2), -3.98217e-02);
+  setValue(gaussSigmaL.termsProportionalToX(1), 1.92568e-01);
+  setValue(gaussSigmaL.termsProportionalToX(2), -3.98217e-02);
+  setValue(mixRaw.termsProportionalToX(1), -2.74745e-01);
+  setValue(mixRaw.termsProportionalToX(2), -1.02066e+00);
 
   // Set the errors on all the terms to be sane, so MINUIT doesn't go crazy
   // when trying to construct the initial error matrix.
@@ -495,20 +572,21 @@ int main(int argc, const char *argv[]) {
   setError(gaussSigmaLVars, 5e-2);
   setError(mixVars, 0.3);
 
-  // Set all the terms proportional to mass to be constant.  In the first
-  // iteration we only fit the terms proportional to DPhi.
-  setConstant(gammaScale.termsProportionalToY(), true);
-  setConstant(gammaShape.termsProportionalToY(), true);
-  setConstant(gaussMean.termsProportionalToY(), true);
-  setConstant(gaussSigma.termsProportionalToY(), true);
-  setConstant(gaussSigmaL.termsProportionalToY(), true);
-  setConstant(mixRaw.termsProportionalToY(), true);
+  // Set all the terms proportional to DPhi to be constant.  In the first
+  // iteration take DPhi = 0 slice and only fit the terms proportional to mass.
+  setConstant(gammaScale.termsProportionalToX(), true);
+  setConstant(gammaShape.termsProportionalToX(), true);
+  setConstant(gaussMean.termsProportionalToX(), true);
+  setConstant(gaussSigma.termsProportionalToX(), true);
+  setConstant(gaussSigmaL.termsProportionalToX(), true);
+  setConstant(mixRaw.termsProportionalToX(), true);
 
   std::cout << "Fitting reduced model..." << std::endl;
   RooArgSet conditionalVariables(*dPhi, *scaledMass);
   RooArgSet binningVars(*dPhi, *scaledLeg1Pt, *scaledMass);
   std::cout << "Beginning pre-fit" << std::endl;
 
+  /*
   std::vector<PreFitResult> fitResults;
 
   size_t nMassSlices = 20;
@@ -562,6 +640,7 @@ int main(int argc, const char *argv[]) {
   }
 
   plotFitResults(fitResults, &canvas, "dPhi_parameters_versus_mass");
+  */
 
   // Now do a fit to get the terms proportional to the mass.
 
@@ -578,27 +657,18 @@ int main(int argc, const char *argv[]) {
       RooArgSet(*dPhi, *scaledLeg1Pt, *scaledMass),
       *backToBackData);
 
+  // Reduce size.
+  RooDataHist backToBackSingleMassBinnedData(
+      "backToBackSingleMassBinnedDataForFit",
+      "backToBackSingleMassBinnedData",
+      RooArgSet(*dPhi, *scaledLeg1Pt, *scaledMass),
+      *backToBackSinlgeMassData);
+
   /*
   backToBackBinnedData.plotOn(scaledMassFrame.get());
   scaledMassFrame->Draw();
   canvas.SaveAs("scaledMassBackToBack.png");
   */
-
-  // Now set the DPhi proportional terms constant.
-  setConstant(gammaScale.termsProportionalToY(), false);
-  setConstant(gammaShape.termsProportionalToY(), false);
-  setConstant(gaussMean.termsProportionalToY(), false);
-  setConstant(gaussSigma.termsProportionalToY(), false);
-  setConstant(gaussSigmaL.termsProportionalToY(), false);
-  setConstant(mixRaw.termsProportionalToY(), false);
-
-  // And enable the terms proportional to the mass.
-  setConstant(gammaScale.termsProportionalToX(), true);
-  setConstant(gammaShape.termsProportionalToX(), true);
-  setConstant(gaussMean.termsProportionalToX(), true);
-  setConstant(gaussSigma.termsProportionalToX(), true);
-  setConstant(gaussSigmaL.termsProportionalToX(), true);
-  setConstant(mixRaw.termsProportionalToX(), true);
 
   // Don't let these blow up.
   setError(gammaScale.termsProportionalToY(), 0.01);
@@ -618,8 +688,31 @@ int main(int argc, const char *argv[]) {
   std::cout << "Printing observables." << std::endl;
   observables->Print("v");
 
+  // Turn everything off to find constant terms
+  setConstant(gammaScale.termsProportionalToY(), true);
+  setConstant(gammaShape.termsProportionalToY(), true);
+  setConstant(gaussMean.termsProportionalToY(), true);
+  setConstant(gaussSigma.termsProportionalToY(), true);
+  setConstant(gaussSigmaL.termsProportionalToY(), true);
+  setConstant(mixRaw.termsProportionalToY(), true);
 
-  model.fitTo(*backToBackData,
+  model.fitTo(*backToBackSinlgeMassData,
+      ConditionalObservables(conditionalVariables),
+      NumCPU(8), Verbose(true), InitialHesse(false));
+
+  plotSlices(*scaledLeg1Pt, model, *backToBackSinlgeMassData,
+      conditionalVariables,
+      binningVars,
+      &canvas, "single_mass_100_back_to_back_", 1, 90, 120, 1, 0, 3.14/2);
+
+  setConstant(gammaScale.termsProportionalToY(), false);
+  setConstant(gammaShape.termsProportionalToY(), false);
+  setConstant(gaussMean.termsProportionalToY(), false);
+  setConstant(gaussSigma.termsProportionalToY(), false);
+  setConstant(gaussSigmaL.termsProportionalToY(), false);
+  setConstant(mixRaw.termsProportionalToY(), false);
+
+  model.fitTo(backToBackBinnedData,
       ConditionalObservables(conditionalVariables),
       NumCPU(8), Verbose(false), InitialHesse(false));
 

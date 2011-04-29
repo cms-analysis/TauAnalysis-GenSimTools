@@ -1,5 +1,6 @@
 
-#include "TauAnalysis/FittingTools/interface/SmoothLandau_x_GaussPdf.h"
+#include "TauAnalysis/GenSimTools/bin/tauDecayKineAuxFunctions.h"
+#include "TauAnalysis/FittingTools/interface/TauDecayKinePdf.h"
 
 #include "FWCore/Utilities/interface/Exception.h"
 
@@ -9,6 +10,8 @@
 #include "RooDataHist.h"
 #include "RooGaussian.h"
 #include "RooLandau.h"
+#include "RooGamma.h"
+#include "RooLognormal.h"
 #include "RooGenericPdf.h"
 #include "RooFormulaVar.h"
 #include "RooAddPdf.h"
@@ -40,35 +43,6 @@
 #include <string>
 #include <sstream>
 
-enum { kElectron_Muon, 
-       kOneProng0Pi0, kOneProng1Pi0, kOneProng2Pi0, kOneProngGt0Pi0, 
-       kThreeProng0Pi0, kThreeProng1Pi0 };
-
-TString getDecayMode_string(int decayMode)
-{
-  TString decayMode_string = "undefined";
-  if      ( decayMode == kElectron_Muon  ) decayMode_string = "Electron_Muon";
-  else if ( decayMode == kOneProng0Pi0   ) decayMode_string = "OneProng0Pi0";
-  else if ( decayMode == kOneProng1Pi0   ) decayMode_string = "OneProng1Pi0"; 
-  else if ( decayMode == kOneProng2Pi0   ) decayMode_string = "OneProng2Pi0"; 
-  else if ( decayMode == kOneProngGt0Pi0 ) decayMode_string = "OneProngGt0Pi0";
-  else if ( decayMode == kThreeProng0Pi0 ) decayMode_string = "ThreeProng0Pi0";
-  else if ( decayMode == kThreeProng1Pi0 ) decayMode_string = "ThreeProng1Pi0";
-  return decayMode_string;
-}
-
-double encodeDecayMode(int decayMode)
-{
-  double decayMode_encoded = -1000;
-  if      ( decayMode == kElectron_Muon  ) decayMode_encoded = -1.;
-  else if ( decayMode == kOneProng0Pi0   ) decayMode_encoded =  0.;
-  else if ( decayMode == kOneProng1Pi0   ) decayMode_encoded =  1.;
-  else if ( decayMode == kOneProng2Pi0   ) decayMode_encoded =  2.;
-  else if ( decayMode == kThreeProng0Pi0 ) decayMode_encoded = 10.;
-  else if ( decayMode == kThreeProng1Pi0 ) decayMode_encoded = 11.;
-  return decayMode_encoded;
-}
-
 void pdfTimingTest(RooAbsPdf* pdf, RooRealVar* mom, RooRealVar* sep)
 {
   TRandom3 rnd;
@@ -78,7 +52,7 @@ void pdfTimingTest(RooAbsPdf* pdf, RooRealVar* mom, RooRealVar* sep)
 
   double pdfValueSum = 0.;
 
-  const unsigned numCalls = 10000;
+  const unsigned numCalls = 100000;
   for ( unsigned iCall = 0; iCall < numCalls; ++iCall ) {
     double momValue = rnd.Uniform(15., 200.);
     double sepValue = rnd.Uniform(0., 0.50);
@@ -104,17 +78,47 @@ void pdfTimingTest(RooAbsPdf* pdf, RooRealVar* mom, RooRealVar* sep)
 //-------------------------------------------------------------------------------
 //
 
-void storePrefitResults(RooRealVar* fitParameter, double ptMin, double ptMax, TGraphErrors* graph)
+double compHistogramRMSgtMax(TH1* histogram)
+{
+  int binMax = histogram->GetMaximumBin();
+  
+  double xMax = histogram->GetBinCenter(binMax);
+
+  double rms = 0.;
+
+  double sumBinContents = 0.;
+
+  int numBins = histogram->GetNbinsX();
+  for ( int iBin = binMax + 1; iBin <= numBins; ++iBin ) {
+    double binContent = histogram->GetBinContent(iBin);
+    double x = histogram->GetBinCenter(iBin);
+
+    double dx = x - xMax;
+    rms += binContent*dx*dx;
+     
+    sumBinContents += binContent;
+  }
+
+  if ( sumBinContents != 0. ) rms = TMath::Sqrt(rms/sumBinContents);
+
+  return rms;
+}
+
+//
+//-------------------------------------------------------------------------------
+//
+
+void storePrefitResults(RooRealVar* fitParameter, double momMin, double momMax, TGraphErrors* graph)
 {
   std::cout << "<storePrefitResults>:" << std::endl;
 
   int iPoint = graph->GetN();
 
-  double pt = 0.5*(ptMin + ptMax);
+  double mom = 0.5*(momMin + momMax);
 
-  graph->SetPoint(iPoint, pt, fitParameter->getVal());
+  graph->SetPoint(iPoint, mom, fitParameter->getVal());
 
-  graph->SetPointError(iPoint, 0.5*TMath::Abs(ptMax - ptMin), fitParameter->getError());
+  graph->SetPointError(iPoint, 0.5*TMath::Abs(momMax - momMin), fitParameter->getError());
 }
 
 void storeFitResults(std::vector<RooRealVar*>& fitParamCoeff, std::vector<double>& fitCoeffVal, std::vector<double>& fitCoeffErr)
@@ -146,22 +150,22 @@ void clearCollection(std::vector<T*>& collection)
 
 struct fitManager
 {
-  fitManager(RooRealVar* mom, RooRealVar* dR, int decayMode, const TString& label,unsigned numPtBins, const double* ptBinning)
+  fitManager(RooRealVar* mom, RooRealVar* dR, int decayMode, const TString& label, const TArrayD& momBinning)
     : mom_(mom),
       dR_(dR),
       decayMode_(decayMode),
       label_(label),
-      ptBinning_(numPtBins + 1, ptBinning),
-      prefitParamLandauMP_(numPtBins),
-      prefitParamLandauWidth_(numPtBins),
-      prefitParamLandauScaleFactor_(numPtBins),
-      prefitLandauScale_(numPtBins),
-      prefitLandau_(numPtBins), 
-      prefitParamGaussianMean_(numPtBins),
-      prefitParamGaussianSigma_(numPtBins),
-      prefitGaussian_(numPtBins), 
-      prefitParamMix_(numPtBins),
-      prefitModel_(numPtBins),
+      momBinning_(momBinning),
+      prefitParamLandauMP_(momBinning.GetSize() - 1),
+      prefitParamLandauWidth_(momBinning.GetSize() - 1),
+      prefitParamLandauScaleFactor_(momBinning.GetSize() - 1),
+      prefitLandauScale_(momBinning.GetSize() - 1),
+      prefitLandau_(momBinning.GetSize() - 1), 
+      prefitParamGaussianMean_(momBinning.GetSize() - 1),
+      prefitParamGaussianSigma_(momBinning.GetSize() - 1),
+      prefitGaussian_(momBinning.GetSize() - 1), 
+      prefitParamMix_(momBinning.GetSize() - 1),
+      prefitModel_(momBinning.GetSize() - 1),
       fitParamCoeffLandauMP_(5),
       fitParamLandauMP_(0),
       fitParamCoeffLandauWidth_(5),
@@ -261,9 +265,9 @@ struct fitManager
 
     TString decayMode_string = getDecayMode_string(decayMode_);
     TString tf1Name = Form("%s_%s_%s_%s", fitParameter.Data(), dR_->GetName(), decayMode_string.Data(), label_.Data());
-    double ptMin = ptBinning_[0];
-    double ptMax = ptBinning_[ptBinning_.GetSize() - 1];
-    TF1* tf1 = new TF1(tf1Name.Data(), formula, ptMin, ptMax);
+    double momMin = momBinning_[0];
+    double momMax = momBinning_[momBinning_.GetSize() - 1];
+    TF1* tf1 = new TF1(tf1Name.Data(), formula, momMin, momMax);
     return tf1;
   }
 
@@ -307,24 +311,24 @@ struct fitManager
     delete canvas;
   }
 
-  RooRealVar* buildPrefitParameter(const TString& name, const TString& ptBinName, double startValue, double min, double max)
+  RooRealVar* buildPrefitParameter(const TString& name, const TString& momBinName, double startValue, double min, double max)
   {
     std::cout << "<fitManager::buildPrefitParameter>:" << std::endl;
 
     TString decayMode_string = getDecayMode_string(decayMode_);
     TString fitParameterName = 
-      Form("%s_%s_%s_%s_%s", name.Data(), ptBinName.Data(), dR_->GetName(), decayMode_string.Data(), label_.Data());
+      Form("%s_%s_%s_%s_%s", name.Data(), momBinName.Data(), dR_->GetName(), decayMode_string.Data(), label_.Data());
     RooRealVar* fitParameter = new RooRealVar(fitParameterName.Data(), fitParameterName.Data(), startValue, min, max);
     return fitParameter;
   }
 
-  RooConstVar* buildConstPrefitParameter(const TString& name, const TString& ptBinName, double value)
+  RooConstVar* buildConstPrefitParameter(const TString& name, const TString& momBinName, double value)
   {
     std::cout << "<buildConstPrefitParameter>:" << std::endl;
 
     TString decayMode_string = getDecayMode_string(decayMode_);
     TString fitParameterName = 
-      Form("%s_%s_%s_%s_%s", name.Data(), ptBinName.Data(), dR_->GetName(), decayMode_string.Data(), label_.Data());
+      Form("%s_%s_%s_%s_%s", name.Data(), momBinName.Data(), dR_->GetName(), decayMode_string.Data(), label_.Data());
     RooConstVar* fitParameter = new RooConstVar(fitParameterName.Data(), fitParameterName.Data(), value);
     return fitParameter;
   }
@@ -351,11 +355,16 @@ struct fitManager
     canvas->SetFillColor(10);
     canvas->SetBorderSize(2);
   
-    for ( int iPtBin = 0; iPtBin < (ptBinning_.GetSize() - 1); ++iPtBin ) {
-      double ptMin = ptBinning_[iPtBin];
-      double ptMax = ptBinning_[iPtBin + 1];
+    for ( int iMomBin = 0; iMomBin < (momBinning_.GetSize() - 1); ++iMomBin ) {
+      double momMin = momBinning_[iMomBin];
+      double momMax = momBinning_[iMomBin + 1];
     
-      TString histogramName = Form("%s_%sPt%2.0fto%2.0f", decayMode_string.Data(), label.Data(), ptMin, ptMax);      
+      TString momName_string  = "Mom";
+      if      ( inputDirName.Contains("DeltaR") ) momName_string  = "Pt";
+      else if ( inputDirName.Contains("Angle")  ) momName_string  = "Energy";
+
+      TString histogramName = 
+	Form("%s_%s%s%2.0fto%2.0f", decayMode_string.Data(), label.Data(), momName_string.Data(), momMin, momMax);
       TH1* histogram = (TH1*)inputFile->Get(TString(inputDirName_full.Data()).Append("/").Append(histogramName.Data()));
       std::cout << " histogramName = " << histogramName.Data() << ": histogram = " << histogram << std::endl;
 
@@ -363,85 +372,168 @@ struct fitManager
       RooDataHist* datahist = new RooDataHist(datahistName.Data(), datahistName.Data(), RooArgList(*dR_), histogram);
       std::cout << " datahist = " << datahist << std::endl;
 
-      TString ptBinName = Form("Pt%2.0fto%2.0f", ptMin, ptMax);
+      TString momBinName = Form("%s%2.0fto%2.0f", momName_string.Data(), momMin, momMax);
 
       double histogramMean = histogram->GetMean();
-      if ( histogramMean > 0.15 ) histogramMean = 0.15;
+      //if ( histogramMean > 0.15 ) histogramMean = 0.15;
       std::cout << " histogramMean = " << histogramMean << std::endl;
+      double histogramMax = histogram->GetBinCenter(histogram->GetMaximumBin());
+      //if ( histogramMax > 0.15 ) histogramMax = 0.15;
+      std::cout << " histogramMax = " << histogramMax << std::endl;
       double histogramRMS = histogram->GetRMS();
-      if ( histogramRMS  > 0.15 ) histogramRMS  = 0.15;
+      //if ( histogramRMS  > 0.15 ) histogramRMS  = 0.15;
       std::cout << " histogramRMS = " << histogramRMS << std::endl;
+      double histogramRMSgtMax = compHistogramRMSgtMax(histogram);
+      std::cout << " histogramRMSgtMax = " << histogramRMSgtMax << std::endl;
       
-      prefitParamLandauMP_[iPtBin] = buildPrefitParameter("LandauMP", ptBinName, 1.2*histogramMean, 0., 0.50);
-      prefitParamLandauWidth_[iPtBin] = buildPrefitParameter("LandauWidth", ptBinName, histogramRMS, 1.e-3, 0.50);
-      prefitParamLandauScaleFactor_[iPtBin] = buildPrefitParameter("LandauScaleFactor", ptBinName, 1., 0.5, 2.0);
-      TString LandauScaleName =
-	Form("LandauScale_%s_%s_%s_%s", decayMode_string.Data(), ptBinName.Data(), dR_->GetName(), label_.Data());
-      prefitLandauScale_[iPtBin] = 
-	new RooFormulaVar(LandauScaleName.Data(), LandauScaleName.Data(), "@0/@1", RooArgSet(*dR_, *prefitParamLandauScaleFactor_[iPtBin]));
-      prefitParamLandauLocation = buildPrefitParameter("LandauScaleLocation", ptBinName, 1., 0.5, 2.0);
+      prefitParamLandauMP_[iMomBin] = buildPrefitParameter("LandauMP", momBinName, 0.8*histogramMean, 0., histogramMean);
+      prefitParamLandauWidth_[iMomBin] = buildPrefitParameter("LandauWidth", momBinName, histogramRMS, 1.e-3, 0.50);
+      prefitParamLandauScaleFactor_[iMomBin] = buildPrefitParameter("LandauScaleFactor", momBinName, 1., 0.5, 2.0);
       TString LandauName =
-	Form("Landau_%s_%s_%s_%s", decayMode_string.Data(), ptBinName.Data(), dR_->GetName(), label_.Data());
-      prefitLandau_[iPtBin] = 
-	//	new RooLandau(LandauName.Data(), LandauName.Data(), *prefitLandauScale_[iPtBin],
-	//	              *prefitParamLandauMP_[iPtBin], *prefitParamLandauWidth_[iPtBin]);
-      new RooGenericPdf((LandauName.Data(), LandauName.Data(),
-			 "TMath::Gaus(@0, @1, @2)*(1.0 + TMath::Erf(@3*((@0 - @1)/@2)/TMath::Sqrt(2)))",
-			 RooArgList(*dR_, *prefitParamLandauMP_[iPtBin], *prefitParamLandauWidth_[iPtBin], prefitParamLandauLocation)));
+	Form("Landau_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), dR_->GetName(), label_.Data());
 
-*prefitParamSkewedGaussianMean_[iPtBin], *prefitParamSkewedGaussianSigma_[iPtBin], 
-				    *prefitParamSkewedGaussianAlpha_[iPtBin])); 
+      //RooConstVar* dR0 = buildConstPrefitParameter("dR0", momBinName, histogramMax);
+      //RooConstVar* dRwidth = buildConstPrefitParameter("dRwidth", momBinName, histogramRMS);
+      //TString dRscaledName = 
+      //  Form("dRscaled_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), dR_->GetName(), label_.Data());
+      //RooFormulaVar* dRscaled = new RooFormulaVar(dRscaledName.Data(), "(@0 - @1)/@2", RooArgList(*dR_, *dR0, *dRwidth));
 
-      prefitParamGaussianMean_[iPtBin] = buildPrefitParameter("GaussianMean", ptBinName, 0.8*histogramMean, 0., 0.25);
-      prefitParamGaussianSigma_[iPtBin] = buildPrefitParameter("GaussianSigma", ptBinName, histogramRMS, 1.e-3, 0.25);
+      RooRealVar* prefitParamNonPeakPwrCorr1 = buildPrefitParameter("NonPeakPwrCorr1", momBinName, 0., -1.e+1, +1.e+1);
+      RooRealVar* prefitParamNonPeakPwrCorr2 = buildPrefitParameter("NonPeakPwrCorr2", momBinName, 0., -1.e+2, +1.e+2);
+      RooRealVar* prefitParamNonPeakBulkLocation = buildPrefitParameter("NonPeakBulkLocation", momBinName, 1.2*histogramMean, 0., 0.25);
+      RooRealVar* prefitParamNonPeakBulkScale = buildPrefitParameter("NonPeakBulkScale", momBinName, histogramRMS, 1.e-6, 0.25);
+      RooRealVar* prefitParamNonPeakBulkShape = buildPrefitParameter("NonPeakBulkShape", momBinName, 0.5, -1.e+2, +1.e+2);
+
+      prefitLandau_[iMomBin] = 
+	new RooGenericPdf(LandauName.Data(), LandauName.Data(),
+			  //"(1.0 + @1*@0 + @2*(2.0*@0*@0 - 1.0))*TMath::LogNormal(@0, @3, @4, @5)*(1.0 - @6*TMath::TanH(@7*(@0 - @8)))",
+			  "(1.e-3 + TMath::Abs(1.0 + @1*@0 + @2*(2.0*@0*@0 - 1.0)))*TMath::Exp(-TMath::Exp((@0 - @3)/@4) + @5*(@0 - @3)/@4)/(@4*TMath::Gamma(@0))",
+			  RooArgList(*dR_, 
+				     *prefitParamNonPeakPwrCorr1, *prefitParamNonPeakPwrCorr2, 
+				     *prefitParamNonPeakBulkLocation, *prefitParamNonPeakBulkScale, *prefitParamNonPeakBulkShape));
+
+      prefitParamGaussianMean_[iMomBin] = 
+	buildPrefitParameter("GaussianMean", momBinName, histogramMax, 0.8*histogramMax, 1.2*histogramMax);
+      prefitParamGaussianSigma_[iMomBin] = 
+	buildPrefitParameter("GaussianSigma", momBinName, histogramRMS, 0.5*histogramRMS, 2.0*histogramRMS);
       TString GaussianName = 
-	Form("Gaussian_%s_%s_%s_%s", decayMode_string.Data(), ptBinName.Data(), dR_->GetName(), label_.Data());
-      prefitGaussian_[iPtBin] = 
-	new RooGaussian(GaussianName.Data(), GaussianName.Data(), *dR_,
-      			*prefitParamGaussianMean_[iPtBin], *prefitParamGaussianSigma_[iPtBin]);
+	Form("Gaussian_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), dR_->GetName(), label_.Data());
+      //prefitGaussian_[iMomBin] = 
+      //  new RooGaussian(GaussianName.Data(), GaussianName.Data(), *dR_,
+      //		  *prefitParamGaussianMean_[iMomBin], *prefitParamGaussianSigma_[iMomBin]);
+
+      RooRealVar* prefitParamNonPeakBulkLocationB = buildPrefitParameter("NonPeakBulkLocationB", momBinName, 0.8*histogramMean, 0., 0.25);
+      RooRealVar* prefitParamNonPeakBulkScaleB = buildPrefitParameter("NonPeakBulkScaleB", momBinName, histogramRMS, 1.e-6, 0.25);
+      RooRealVar* prefitParamNonPeakBulkShapeB = buildPrefitParameter("NonPeakBulkShapeB", momBinName, 0.5, -1.e+2, +1.e+2);
+      RooRealVar* prefitParamNonPeakTailScaleB = buildPrefitParameter("NonPeakTailScaleB", momBinName, 1., 0., 1.);
+      RooRealVar* prefitParamNonPeakTailShapeB = buildPrefitParameter("NonPeakTailShapeB", momBinName, 1., 1.e-3, 1.e+3);
+      RooRealVar* prefitParamNonPeakTailLocationB = buildPrefitParameter("NonPeakTailLocationB", momBinName, histogramMax + 2.*histogramRMS, histogramMax, 2.);
+
+      prefitGaussian_[iMomBin] = 
+	new RooGenericPdf(GaussianName.Data(), GaussianName.Data(), 
+			  //"(1.0 + @1*@0 + @2*(2.0*@0*@0 - 1.0))*TMath::LogNormal(@0, @3, @4, @5)*(1.0 - @6*TMath::TanH(@7*(@0 - @8)))",
+			  "TMath::Exp(-TMath::Exp(-(@0 + @1)/@2) - @3*(@0 - @1)/@2)/(@2*TMath::Gamma(@0))*(1.0 - @3*TMath::TanH(@4*(@0 - @5)))",
+			  RooArgList(*dR_, 
+				     *prefitParamNonPeakBulkLocationB, *prefitParamNonPeakBulkScaleB, *prefitParamNonPeakBulkShapeB,
+				     *prefitParamNonPeakTailScaleB, *prefitParamNonPeakTailShapeB, *prefitParamNonPeakTailLocationB));
+
+
+      prefitParamMix_[iMomBin] = buildPrefitParameter("mix", momBinName, 0.75, 0.50, 0.95);
       
-      prefitParamMix_[iPtBin] = buildPrefitParameter("mix", ptBinName, 0.50, 0., 1.);
+      TString dRscaledName = 
+        Form("dRscaled_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), dR_->GetName(), label_.Data());
+      RooFormulaVar* dRscaled = new RooFormulaVar(dRscaledName.Data(), "@0*@1", RooArgList(*dR_, *mom_));
 
-      TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), ptBinName.Data(), dR_->GetName(), label_.Data());
-      prefitModel_[iPtBin] = 
-	new RooAddPdf(modelName.Data(), modelName.Data(), 
-		      *prefitLandau_[iPtBin], *prefitGaussian_[iPtBin], *prefitParamMix_[iPtBin]);
+      RooRealVar* gmean = buildPrefitParameter("gmean", momBinName, histogramMax, 0., 12.);
+      RooRealVar* g2sigma = buildPrefitParameter("g2sigma", momBinName, histogramRMS, 0., 12.);
+      RooRealVar* g4sigma = buildPrefitParameter("g4sigma", momBinName, histogramRMS, 0., 12.);
+      RooRealVar* C = buildPrefitParameter("C", momBinName, 0.25, 0., 1.);
+      RooRealVar* mp = buildPrefitParameter("mp", momBinName, histogramMax, 0., 12.);
+      RooRealVar* width = buildPrefitParameter("width", momBinName, histogramRMSgtMax, 0., 12.);
+      RooRealVar* alpha = buildPrefitParameter("alpha", momBinName, 1., 1.e-2, 1.e+2);
+      RooRealVar* x0 = buildPrefitParameter("x0", momBinName, histogramMax, 0.5*histogramMax, 1.5*histogramMax);
+      RooRealVar* x1 = buildPrefitParameter("x1", momBinName, histogramMax + 3.*histogramRMSgtMax, histogramMax, 12.);
 
+      TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), dR_->GetName(), label_.Data());
+      prefitModel_[iMomBin] = 
+	//	new RooAddPdf(modelName.Data(), modelName.Data(), 
+	//		      *prefitLandau_[iMomBin], *prefitGaussian_[iMomBin], *prefitParamMix_[iMomBin]);
+	new TauDecayKinePdf(modelName.Data(), modelName.Data(), 
+			    *dRscaled, *gmean, *g2sigma, *g4sigma, *C, *mp, *width, *alpha, *x0, *x1);
+
+      RooConstVar* gmeanConstraint_value = 
+        new RooConstVar("gmeanConstraint_value", "gmeanConstraint_value", histogramMax);
+      RooConstVar* gmeanConstraint_sigma =
+        new RooConstVar("gmeanConstraint_sigma", "gmeanConstraint_sigma", 0.2*histogramMax);
+      RooGaussian* gmeanConstraint_pdf =
+        new RooGaussian("gmeanConstraint_pdf", "gmeanConstraint_pdf",
+			*gmean, *gmeanConstraint_value, *gmeanConstraint_sigma);
+      RooConstVar* x0Constraint_value =
+        new RooConstVar("x0Constraint_value", "x0Constraint_value", histogramMax);
+      RooConstVar* x0Constraint_sigma =
+        new RooConstVar("x0Constraint_sigma", "x0Constraint_sigma", 0.2*histogramMax);
+      RooGaussian* x0Constraint_pdf =
+        new RooGaussian("x0Constraint_pdf", "x0Constraint_pdf",
+			*x0, *x0Constraint_value, *x0Constraint_sigma);
+    
       RooLinkedList options;
       options.Add(new RooCmdArg(RooFit::Save(true)));
-      options.Add(new RooCmdArg(RooFit::PrintLevel(-1)));
-      options.Add(new RooCmdArg(RooFit::PrintEvalErrors(-1)));
-      options.Add(new RooCmdArg(RooFit::Warnings(-1)));
-
-      RooFitResult* prefitResult = prefitModel_[iPtBin]->fitTo(*datahist, options);
+      //options.Add(new RooCmdArg(RooFit::PrintLevel(-1)));
+      //options.Add(new RooCmdArg(RooFit::PrintEvalErrors(-1)));
+      //options.Add(new RooCmdArg(RooFit::Warnings(-1)));
+      options.Add(new RooCmdArg(RooFit::ExternalConstraints(RooArgSet(*gmeanConstraint_pdf, *x0Constraint_pdf))));
+      
+      RooFitResult* prefitResult = prefitModel_[iMomBin]->fitTo(*datahist, options);
       std::cout << " prefit status = " << prefitResult->status() << " (converged = 0)" << std::endl;
       delete prefitResult;
 
-      printPrefitParameter("LandauMP", prefitParamLandauMP_[iPtBin]);
-      printPrefitParameter("LandauWidth", prefitParamLandauWidth_[iPtBin]);
-      printPrefitParameter("LandauScaleFactor", prefitParamLandauScaleFactor_[iPtBin]);
-      printPrefitParameter("GaussianMean", prefitParamGaussianMean_[iPtBin]);
-      printPrefitParameter("GaussianSigma", prefitParamGaussianSigma_[iPtBin]);
-      printPrefitParameter("mix", prefitParamMix_[iPtBin]);     
+      //printPrefitParameter("LandauMP", prefitParamLandauMP_[iMomBin]);
+      //printPrefitParameter("LandauWidth", prefitParamLandauWidth_[iMomBin]);
+      //printPrefitParameter("LandauScaleFactor", prefitParamLandauScaleFactor_[iMomBin]);
+/*
+      printPrefitParameter("GaussianMean", prefitParamGaussianMean_[iMomBin]);
+      printPrefitParameter("GaussianSigma", prefitParamGaussianSigma_[iMomBin]);
+      printPrefitParameter("NonPeakPwrCorr1", prefitParamNonPeakPwrCorr1);
+      printPrefitParameter("NonPeakPwrCorr2", prefitParamNonPeakPwrCorr2);
+      printPrefitParameter("NonPeakBulkLocation", prefitParamNonPeakBulkLocation);
+      printPrefitParameter("NonPeakBulkScale", prefitParamNonPeakBulkScale);
+      printPrefitParameter("NonPeakBulkShape", prefitParamNonPeakBulkShape);
+      printPrefitParameter("NonPeakBulkLocationB", prefitParamNonPeakBulkLocationB);
+      printPrefitParameter("NonPeakBulkScaleB", prefitParamNonPeakBulkScaleB);
+      printPrefitParameter("NonPeakBulkShapeB", prefitParamNonPeakBulkShapeB);
+      printPrefitParameter("NonPeakTailScaleB", prefitParamNonPeakTailScaleB);
+      printPrefitParameter("NonPeakTailShapeB", prefitParamNonPeakTailShapeB);
+      printPrefitParameter("NonPeakTailLocatioB", prefitParamNonPeakTailLocationB);
+      printPrefitParameter("mix", prefitParamMix_[iMomBin]);     
+ */
+      printPrefitParameter("gmean", gmean);
+      printPrefitParameter("g2sigma", g2sigma);
+      printPrefitParameter("g4sigma", g4sigma);
+      printPrefitParameter("C", C);
+      printPrefitParameter("mp", mp);
+      printPrefitParameter("width", width);
+      printPrefitParameter("alpha", alpha);
+      printPrefitParameter("x0", x0);
+      printPrefitParameter("x1", x1);
 
-      storePrefitResults(prefitParamLandauMP_[iPtBin], ptMin, ptMax, prefitResultLandauMP_);
-      storePrefitResults(prefitParamLandauWidth_[iPtBin], ptMin, ptMax, prefitResultLandauWidth_);
-      storePrefitResults(prefitParamLandauScaleFactor_[iPtBin], ptMin, ptMax, prefitResultLandauScaleFactor_);
-      storePrefitResults(prefitParamGaussianMean_[iPtBin], ptMin, ptMax, prefitResultGaussianMean_);
-      storePrefitResults(prefitParamGaussianSigma_[iPtBin], ptMin, ptMax, prefitResultGaussianSigma_);
-      storePrefitResults(prefitParamMix_[iPtBin], ptMin, ptMax, prefitResultMix_);
+      storePrefitResults(prefitParamLandauMP_[iMomBin], momMin, momMax, prefitResultLandauMP_);
+      storePrefitResults(prefitParamLandauWidth_[iMomBin], momMin, momMax, prefitResultLandauWidth_);
+      storePrefitResults(prefitParamLandauScaleFactor_[iMomBin], momMin, momMax, prefitResultLandauScaleFactor_);
+      storePrefitResults(prefitParamGaussianMean_[iMomBin], momMin, momMax, prefitResultGaussianMean_);
+      storePrefitResults(prefitParamGaussianSigma_[iMomBin], momMin, momMax, prefitResultGaussianSigma_);
+      storePrefitResults(prefitParamMix_[iMomBin], momMin, momMax, prefitResultMix_);
          
       canvas->Clear();
       canvas->SetLogy();
     
-      TString frameTitle = Form("%s %s: P_{T} = %2.0f..%2.0f GeV", dR_->GetName(), decayMode_string.Data(), ptMin, ptMax);
-      RooPlot* frame = dR_->frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(50));
+      TString frameTitle = Form("%s %s: P_{T} = %2.0f..%2.0f GeV", dR_->GetName(), decayMode_string.Data(), momMin, momMax);
+      RooPlot* frame = dR_->frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(100));
     
       datahist->plotOn(frame);
 
-      prefitModel_[iPtBin]->plotOn(frame);
-      prefitModel_[iPtBin]->plotOn(frame, RooFit::Components(*prefitLandau_[iPtBin]), RooFit::LineStyle(kDashed));
-      prefitModel_[iPtBin]->plotOn(frame, RooFit::Components(*prefitGaussian_[iPtBin]), RooFit::LineStyle(kDashDotted));
+      prefitModel_[iMomBin]->plotOn(frame);
+      prefitModel_[iMomBin]->plotOn(frame, RooFit::Components(*prefitLandau_[iMomBin]), RooFit::LineStyle(kDashed));
+      prefitModel_[iMomBin]->plotOn(frame, RooFit::Components(*prefitGaussian_[iMomBin]), RooFit::LineStyle(kDashDotted));
 
       frame->Draw();
 
@@ -467,7 +559,7 @@ struct fitManager
       legend.Draw();
 
       TString outputFileName_i = outputFileName;
-      outputFileName_i = outputFileName_i.ReplaceAll(".", TString("_").Append(ptBinName).Append("."));
+      outputFileName_i = outputFileName_i.ReplaceAll(".", TString("_").Append(momBinName).Append("."));
       
       canvas->Update();
   
@@ -542,11 +634,11 @@ struct fitManager
       buildMomDependentFitParameter("LandauScaleFactor", fitParamCoeffLandauScaleFactor_,
 				    prefitCoeffValLandauScaleFactor_, prefitCoeffErrLandauScaleFactor_);
     TString LandauScaleName =
-      Form("LandauScale_%s_%s_%s_%s", decayMode_string.Data(), "AllPt", dR_->GetName(), label_.Data());
+      Form("LandauScale_%s_%s_%s_%s", decayMode_string.Data(), "AllMom", dR_->GetName(), label_.Data());
     fitLandauScale_ = 
       new RooFormulaVar(LandauScaleName.Data(), LandauScaleName.Data(), "@0/@1", RooArgSet(*dR_, *fitParamLandauScaleFactor_));
     TString LandauName =
-      Form("Landau_%s_%s_%s_%s", decayMode_string.Data(), "AllPt", dR_->GetName(), label_.Data());
+      Form("Landau_%s_%s_%s_%s", decayMode_string.Data(), "AllMom", dR_->GetName(), label_.Data());
     fitLandau_ = 
       new RooLandau(LandauName.Data(), LandauName.Data(), *fitLandauScale_, 
 		    *fitParamLandauMP_, *fitParamLandauWidth_);
@@ -558,7 +650,7 @@ struct fitManager
       buildMomDependentFitParameter("GaussianSigma", fitParamCoeffGaussianSigma_,
 				    prefitCoeffValGaussianSigma_, prefitCoeffErrGaussianSigma_);
     TString GaussianName = 
-      Form("Gaussian_%s_%s_%s_%s", decayMode_string.Data(), "AllPt", dR_->GetName(), label_.Data());
+      Form("Gaussian_%s_%s_%s_%s", decayMode_string.Data(), "AllMom", dR_->GetName(), label_.Data());
     fitGaussian_ =
       new RooGaussian(GaussianName.Data(), GaussianName.Data(), *dR_,
 		      *fitParamGaussianMean_, *fitParamGaussianSigma_);
@@ -567,7 +659,7 @@ struct fitManager
       buildMomDependentFitParameter("mix", fitParamCoeffMix_,
 				    prefitCoeffValMix_, prefitCoeffErrMix_, true);
 			
-    TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), "AllPt", dR_->GetName(), label_.Data());
+    TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), "AllMom", dR_->GetName(), label_.Data());
     fitModel_ = 
       new RooAddPdf(modelName.Data(), modelName.Data(), 
 		    *fitLandau_, *fitGaussian_, *fitParamMix_);
@@ -616,32 +708,32 @@ struct fitManager
     canvas->SetFillColor(10);
     canvas->SetBorderSize(2);
 
-    for ( int iPtBin = 0; iPtBin < (ptBinning_.GetSize() - 1); ++iPtBin ) {
-      double ptMin = ptBinning_[iPtBin];
-      double ptMax = ptBinning_[iPtBin + 1];
+    for ( int iMomBin = 0; iMomBin < (momBinning_.GetSize() - 1); ++iMomBin ) {
+      double momMin = momBinning_[iMomBin];
+      double momMax = momBinning_[iMomBin + 1];
 
-      if ( (iPtBin % 6) == 0 ) {
+      if ( (iMomBin % 6) == 0 ) {
 	canvas->Clear();
 	canvas->Divide(2,3);
       }
 
-      TVirtualPad* pad = canvas->cd((iPtBin % 6) + 1);
+      TVirtualPad* pad = canvas->cd((iMomBin % 6) + 1);
       pad->SetLogy();
 
-      TString frameTitle = Form("%s %s: P_{T} = %2.0f..%2.0f GeV", dR_->GetName(), decayMode_string.Data(), ptMin, ptMax);
-      RooPlot* frame = dR_->frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(50));
+      TString frameTitle = Form("%s %s: P_{T} = %2.0f..%2.0f GeV", dR_->GetName(), decayMode_string.Data(), momMin, momMax);
+      RooPlot* frame = dR_->frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(100));
       
-      TString ptSliceName = Form("ptSlice%2.0fto%2.0f", ptMin, ptMax);
-      std::stringstream ptSliceCut;
-      ptSliceCut << ptMin << " < " << mom_->GetName() << " && " << mom_->GetName() << " < " << ptMax;
+      TString momSliceName = Form("momSlice%2.0fto%2.0f", momMin, momMax);
+      std::stringstream momSliceCut;
+      momSliceCut << momMin << " < " << mom_->GetName() << " && " << mom_->GetName() << " < " << momMax;
       
-      RooAbsData* ptSliceDataset = dataset->reduce(ptSliceCut.str().data());
-      std::cout << "Selected " << ptSliceDataset->numEntries() << " TTree entries" 
-		<< " in slice " << Form("pT = %2.0f..%2.0f GeV", ptMin, ptMax) << "..." << std::endl;
-      RooDataHist ptSliceDataset_binned("ptSliceDataset_binned", "ptSliceDataset_binned", RooArgSet(*mom_, *dR_), *ptSliceDataset);
-      ptSliceDataset_binned.plotOn(frame);
+      RooAbsData* momSliceDataset = dataset->reduce(momSliceCut.str().data());
+      std::cout << "Selected " << momSliceDataset->numEntries() << " TTree entries" 
+		<< " in slice " << Form("mom = %2.0f..%2.0f GeV", momMin, momMax) << "..." << std::endl;
+      RooDataHist momSliceDataset_binned("momSliceDataset_binned", "momSliceDataset_binned", RooArgSet(*mom_, *dR_), *momSliceDataset);
+      momSliceDataset_binned.plotOn(frame);
      
-      fitModel_->plotOn(frame, RooFit::ProjWData(RooArgSet(*mom_), ptSliceDataset_binned));
+      fitModel_->plotOn(frame, RooFit::ProjWData(RooArgSet(*mom_), momSliceDataset_binned));
       fitModel_->plotOn(frame, RooFit::Components(*fitLandau_), RooFit::LineStyle(kDashed));
       fitModel_->plotOn(frame, RooFit::Components(*fitGaussian_), RooFit::LineStyle(kDashDotted));
 
@@ -668,10 +760,10 @@ struct fitManager
       if ( graphData     != 0 ) legend.AddEntry(graphData,     "TAUOLA",   "p");
       legend.Draw();
 
-      if ( (iPtBin % 6) == 5 ) {
+      if ( (iMomBin % 6) == 5 ) {
 	canvas->Update();
 	TString outputFileName_i = outputFileName;
-	outputFileName_i = outputFileName_i.ReplaceAll(".", Form("_page%u.", (iPtBin / 6) + 1));
+	outputFileName_i = outputFileName_i.ReplaceAll(".", Form("_page%u.", (iMomBin / 6) + 1));
 	canvas->SaveAs(outputFileName_i.Data());
       }
     }
@@ -715,7 +807,7 @@ struct fitManager
   RooRealVar* dR_;
   int decayMode_;
   TString label_;
-  TArrayD ptBinning_;
+  TArrayD momBinning_;
 
   std::vector<RooRealVar*> prefitParamLandauMP_;
   std::vector<RooRealVar*> prefitParamLandauWidth_;
@@ -824,13 +916,9 @@ int main(int argc, const char* argv[])
   
   TString inputFileName_histograms = "makeTauDecayKinePlots.root";
 
-  //unsigned numPtBins = 12;
-  //const double ptBinning[] = { 15., 20., 25., 30., 35., 40., 50., 60., 80., 100., 120., 160., 200. };
-  unsigned numPtBins = 36;
-  const double ptBinning[] = { 15., 20., 25., 30., 35., 40., 45., 50., 55., 60., 65., 70., 75.,
-			       80., 85., 90., 95., 100., 105., 110., 115., 120., 125., 130., 135., 140., 
-			       145., 150., 155., 160., 165., 170., 175., 180., 185., 190., 195. };
-
+  TArrayD momBinning = getBinningMom();
+  TArrayD sepBinning = getBinningSepTimesMom();
+  
   double decayModeElectron_Muon_encoded = encodeDecayMode(kElectron_Muon);
   double decayModeHadMin_encoded = encodeDecayMode(kOneProng0Pi0);
   double decayModeHadMax_encoded = encodeDecayMode(kThreeProng1Pi0);
@@ -874,31 +962,31 @@ int main(int argc, const char* argv[])
    ********                   Define variabes and data                      ****
    *****************************************************************************/
 
-  RooRealVar leg1Energy("leg1Energy", "leg1Energy", 0., 300.);
-  RooRealVar leg1Pt("leg1Pt", "leg1Pt", 0., 200.);
+  RooRealVar leg1Energy("leg1Energy", "leg1Energy", 0., 350.);
+  RooRealVar leg1Pt("leg1Pt", "leg1Pt", 0., 250.);
   RooRealVar leg1VisPt("leg1VisPt", "leg1VisPt", 0., 200.);
   RooRealVar leg1VisEta("leg1VisEta", "leg1VisEta", -2.5, +2.5);
   RooRealVar leg1DecayMode("leg1DecayMode", "leg1DecayMode", -1.5, +11.5);
-  RooRealVar leg1VisInvisAngleLab("leg1VisInvisAngleLab", "leg1VisInvisAngleLab", 0., 0.50);
-  RooRealVar leg1VisInvisDeltaRLab("leg1VisInvisDeltaRLab", "leg1VisInvisDeltaRLab", 0., 0.50);
+  RooRealVar leg1VisInvisAngleLab("leg1VisInvisAngleLab", "leg1VisInvisAngleLab", 0., sepBinning[sepBinning.GetSize() - 1]);
+  RooRealVar leg1VisInvisDeltaRLab("leg1VisInvisDeltaRLab", "leg1VisInvisDeltaRLab", 0., sepBinning[sepBinning.GetSize() - 1]);
 
-  leg1Energy.setBins(100);
-  leg1Pt.setBins(100);
-  leg1VisInvisAngleLab.setBins(100);
-  leg1VisInvisDeltaRLab.setBins(100);
+  leg1Energy.setBins(350);
+  leg1Pt.setBins(250);
+  leg1VisInvisAngleLab.setBins(120);
+  leg1VisInvisDeltaRLab.setBins(120);
 
-  RooRealVar leg2Energy("leg2Energy", "leg2Energy", 0., 300.);
-  RooRealVar leg2Pt("leg2Pt", "leg2Pt", 0., 200.);
+  RooRealVar leg2Energy("leg2Energy", "leg2Energy", 0., 350.);
+  RooRealVar leg2Pt("leg2Pt", "leg2Pt", 0., 250.);
   RooRealVar leg2VisPt("leg2VisPt", "leg2VisPt", 0., 200.);
   RooRealVar leg2VisEta("leg2VisEta", "leg2VisEta", -2.5, +2.5);
   RooRealVar leg2DecayMode("leg2DecayMode", "leg2DecayMode", -1.5, +11.5);
-  RooRealVar leg2VisInvisAngleLab("leg2VisInvisAngleLab", "leg2VisInvisAngleLab", 0., 0.50);
-  RooRealVar leg2VisInvisDeltaRLab("leg2VisInvisDeltaRLab", "leg2VisInvisDeltaRLab", 0., 0.50);
+  RooRealVar leg2VisInvisAngleLab("leg2VisInvisAngleLab", "leg2VisInvisAngleLab", 0., sepBinning[sepBinning.GetSize() - 1]);
+  RooRealVar leg2VisInvisDeltaRLab("leg2VisInvisDeltaRLab", "leg2VisInvisDeltaRLab", 0., sepBinning[sepBinning.GetSize() - 1]);
 
-  leg2Energy.setBins(100);
-  leg2Pt.setBins(100);
-  leg2VisInvisAngleLab.setBins(100);
-  leg2VisInvisDeltaRLab.setBins(100);
+  leg2Energy.setBins(350);
+  leg2Pt.setBins(250);
+  leg2VisInvisAngleLab.setBins(120);
+  leg2VisInvisDeltaRLab.setBins(120);
 
   TObjArray variables;
   variables.Add(&leg1Energy);
@@ -915,7 +1003,7 @@ int main(int argc, const char* argv[])
   variables.Add(&leg2DecayMode);
   variables.Add(&leg2VisInvisAngleLab);
   variables.Add(&leg2VisInvisDeltaRLab);
-
+/*
   RooAbsData* dataset_all = new RooDataSet("dataset", "datasetset", RooArgSet(variables), RooFit::Import(*dataTree));
   std::cout << "Processing " << dataset_all->numEntries() << " TTree entries..." << std::endl;
   
@@ -927,6 +1015,9 @@ int main(int argc, const char* argv[])
     dataset_selected = dataset_notNaN->reduce(visMomCuts);
     std::cout << "--> Passing vis. Momentum Cuts = " << dataset_selected->numEntries() << std::endl;
   }
+ */
+  RooAbsData* dataset_notNaN = 0;
+  RooAbsData* dataset_selected = 0;
 
   std::map<std::string, fitManager*> fitResults;
   
@@ -961,31 +1052,34 @@ int main(int argc, const char* argv[])
      *****************************************************************************/
 
     if ( runAll ) {
+/*
       RooAbsData* dataset_leg1_all = dataset_notNaN->reduce(leg1DecayModeSelection.Data());
-      
+ */      
+      RooAbsData* dataset_leg1_all = 0;
+
       TString fitManagerName_leg1_dR_all = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg1", "dR", "all");
       if ( fitResults.find(fitManagerName_leg1_dR_all.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg1_dR_all.Data()] = 
 	  new fitManager(&leg1Pt, &leg1VisInvisDeltaRLab, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg1", "dR", "all"), numPtBins, ptBinning);
+			 Form("%s_%s_%s", "leg1", "dR", "all"), momBinning);
       }
       fitManager* fitManager_leg1_dR_all = fitResults[fitManagerName_leg1_dR_all.Data()];
       TString outputFileName_leg1_dR_all = Form("plots/fitTauDecayKinePlots_%s_leg1_dR_all.eps", decayMode_string.Data());
       fitManager_leg1_dR_all->runPrefit(inputFileName_histograms, 
-					"VisInvisDeltaRLab", "all", outputFileName_leg1_dR_all);
+					"VisInvisDeltaRLabTimesPt", "all", outputFileName_leg1_dR_all);
       fitManager_leg1_dR_all->runFit(dataset_leg1_all, outputFileName_leg1_dR_all);
       
       TString fitManagerName_leg1_angle_all = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg1", "angle", "all");
       if ( fitResults.find(fitManagerName_leg1_angle_all.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg1_angle_all.Data()] = 
 	  new fitManager(&leg1Energy, &leg1VisInvisAngleLab, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg1", "angle", "all"), numPtBins, ptBinning);
+			 Form("%s_%s_%s", "leg1", "angle", "all"), momBinning);
       }
       fitManager* fitManager_leg1_angle_all = fitResults[fitManagerName_leg1_angle_all.Data()];
       TString outputFileName_leg1_angle_all = 
 	Form("plots/fitTauDecayKinePlots_%s_leg1_angle_all.eps", decayMode_string.Data());
       fitManager_leg1_angle_all->runPrefit(inputFileName_histograms, 
-					   "VisInvisAngleLab", "all", outputFileName_leg1_angle_all);
+					   "VisInvisAngleLabTimesEnergy", "all", outputFileName_leg1_angle_all);
       fitManager_leg1_angle_all->runFit(dataset_leg1_all, outputFileName_leg1_angle_all);
     }
 
@@ -1000,25 +1094,25 @@ int main(int argc, const char* argv[])
       if ( fitResults.find(fitManagerName_leg1_dR_selected.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg1_dR_selected.Data()] = 
 	  new fitManager(&leg1Pt, &leg1VisInvisDeltaRLab, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg1", "dR", "selected2"), numPtBins, ptBinning);
+			 Form("%s_%s_%s", "leg1", "dR", "selected2"), momBinning);
       }
       fitManager* fitManager_leg1_dR_selected = fitResults[fitManagerName_leg1_dR_selected.Data()];
       TString outputFileName_leg1_dR_selected = Form("plots/fitTauDecayKinePlots_%s_leg1_dR_selected.eps", decayMode_string.Data());
       fitManager_leg1_dR_selected->runPrefit(inputFileName_histograms, 
-					   "VisInvisDeltaRLab", "selected2", outputFileName_leg1_dR_selected);
+					   "VisInvisDeltaRLabTimesPt", "selected2", outputFileName_leg1_dR_selected);
       fitManager_leg1_dR_selected->runFit(dataset_leg1_selected, outputFileName_leg1_dR_selected);
       
       TString fitManagerName_leg1_angle_selected = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg1", "angle", "selected");
       if ( fitResults.find(fitManagerName_leg1_angle_selected.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg1_angle_selected.Data()] = 
 	  new fitManager(&leg1Energy, &leg1VisInvisAngleLab, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg1", "angle", "selected2"), numPtBins, ptBinning);
+			 Form("%s_%s_%s", "leg1", "angle", "selected2"), momBinning);
       }
       fitManager* fitManager_leg1_angle_selected = fitResults[fitManagerName_leg1_angle_selected.Data()];
       TString outputFileName_leg1_angle_selected = 
 	Form("plots/fitTauDecayKinePlots_%s_leg1_angle_selected.eps", decayMode_string.Data());
       fitManager_leg1_angle_selected->runPrefit(inputFileName_histograms, 
-						"VisInvisAngleLab", "selected2", outputFileName_leg1_angle_selected);
+						"VisInvisAngleLabTimesEnergy", "selected2", outputFileName_leg1_angle_selected);
       fitManager_leg1_angle_selected->runFit(dataset_leg1_selected, outputFileName_leg1_angle_selected);
     }
 
@@ -1033,25 +1127,25 @@ int main(int argc, const char* argv[])
       if ( fitResults.find(fitManagerName_leg2_dR_all.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg2_dR_all.Data()] = 
 	  new fitManager(&leg2Pt, &leg2VisInvisDeltaRLab, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg2", "dR", "all"), numPtBins, ptBinning);
+			 Form("%s_%s_%s", "leg2", "dR", "all"), momBinning);
       }
       fitManager* fitManager_leg2_dR_all = fitResults[fitManagerName_leg2_dR_all.Data()];
       TString outputFileName_leg2_dR_all = Form("plots/fitTauDecayKinePlots_%s_leg2_dR_all.eps", decayMode_string.Data());
       fitManager_leg2_dR_all->runPrefit(inputFileName_histograms, 
-					"VisInvisDeltaRLab", "all", outputFileName_leg2_dR_all);
+					"VisInvisDeltaRLabTimesPt", "all", outputFileName_leg2_dR_all);
       fitManager_leg2_dR_all->runFit(dataset_leg2_all, outputFileName_leg2_dR_all);
       
       TString fitManagerName_leg2_angle_all = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg2", "angle", "all");
       if ( fitResults.find(fitManagerName_leg2_angle_all.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg2_angle_all.Data()] = 
 	  new fitManager(&leg2Energy, &leg2VisInvisAngleLab, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg2", "angle", "all"), numPtBins, ptBinning);
+			 Form("%s_%s_%s", "leg2", "angle", "all"), momBinning);
       }
       fitManager* fitManager_leg2_angle_all = fitResults[fitManagerName_leg2_angle_all.Data()];
       TString outputFileName_leg2_angle_all = 
 	Form("plots/fitTauDecayKinePlots_%s_leg2_angle_all.eps", decayMode_string.Data());
       fitManager_leg2_angle_all->runPrefit(inputFileName_histograms, 
-					   "VisInvisAngleLab", "all", outputFileName_leg2_angle_all);
+					   "VisInvisAngleLabTimesEnergy", "all", outputFileName_leg2_angle_all);
       fitManager_leg2_angle_all->runFit(dataset_leg2_all, outputFileName_leg2_angle_all);
     }
     
@@ -1066,35 +1160,35 @@ int main(int argc, const char* argv[])
       if ( fitResults.find(fitManagerName_leg2_dR_selected.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg2_dR_selected.Data()] = 
 	  new fitManager(&leg2Pt, &leg2VisInvisDeltaRLab, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg2", "dR", "selected2"), numPtBins, ptBinning);
+			 Form("%s_%s_%s", "leg2", "dR", "selected2"), momBinning);
       }
       fitManager* fitManager_leg2_dR_selected = fitResults[fitManagerName_leg2_dR_selected.Data()];
       TString outputFileName_leg2_dR_selected = Form("plots/fitTauDecayKinePlots_%s_leg2_dR_selected.eps", decayMode_string.Data());
       fitManager_leg2_dR_selected->runPrefit(inputFileName_histograms, 
-					     "VisInvisDeltaRLab", "selected2", outputFileName_leg2_dR_selected);
+					     "VisInvisDeltaRLabTimesPt", "selected2", outputFileName_leg2_dR_selected);
       fitManager_leg2_dR_selected->runFit(dataset_leg2_selected, outputFileName_leg2_dR_selected);
       
       TString fitManagerName_leg2_angle_selected = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg2", "angle", "selected");
       if ( fitResults.find(fitManagerName_leg2_angle_selected.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg2_angle_selected.Data()] = 
 	  new fitManager(&leg2Energy, &leg2VisInvisAngleLab, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg2", "angle", "selected2"), numPtBins, ptBinning);
+			 Form("%s_%s_%s", "leg2", "angle", "selected2"), momBinning);
       }
       fitManager* fitManager_leg2_angle_selected = fitResults[fitManagerName_leg2_angle_selected.Data()];
       TString outputFileName_leg2_angle_selected = 
 	Form("plots/fitTauDecayKinePlots_%s_leg2_angle_selected.eps", decayMode_string.Data());
       fitManager_leg2_angle_selected->runPrefit(inputFileName_histograms, 
-						"VisInvisAngleLab", "selected2", outputFileName_leg2_angle_selected);
+						"VisInvisAngleLabTimesEnergy", "selected2", outputFileName_leg2_angle_selected);
       fitManager_leg2_angle_selected->runFit(dataset_leg2_selected, outputFileName_leg2_angle_selected);
     }
 
 //--- write results of prefit to ROOT file
     TString outputFileName_prefit = Form("fitTauDecayKinePlots_%s%s.root", decayMode_string.Data(), selection_string.Data());
     TFile* outputFile_prefit = new TFile(outputFileName_prefit.Data(), "RECREATE");
-    TDirectory* dirVisInvisDeltaRLab = outputFile_prefit->mkdir("VisInvisDeltaRLab");  
+    TDirectory* dirVisInvisDeltaRLab = outputFile_prefit->mkdir("VisInvisDeltaRLabTimesPt");  
     TDirectory* dirVisInvisDeltaRLab_all = dirVisInvisDeltaRLab->mkdir("all");
     TDirectory* dirVisInvisDeltaRLab_selected = dirVisInvisDeltaRLab->mkdir("selected");
-    TDirectory* dirVisInvisAngleLab = outputFile_prefit->mkdir("VisInvisAngleLab");
+    TDirectory* dirVisInvisAngleLab = outputFile_prefit->mkdir("VisInvisAngleLabTimesEnergy");
     TDirectory* dirVisInvisAngleLab_all = dirVisInvisAngleLab->mkdir("all");
     TDirectory* dirVisInvisAngleLab_selected = dirVisInvisAngleLab->mkdir("selected");
     for ( std::map<std::string, fitManager*>::iterator prefitResult = fitResults.begin();

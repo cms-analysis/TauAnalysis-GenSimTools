@@ -12,6 +12,7 @@
   <use   name="boost_program_options"/>
 </bin>
 <bin   file="fitTauDecayKine.cc" name="fitTauDecayKine">
+  <use   name="FWCore/Utilities"/>
   <use   name="TauAnalysis/FittingTools"/>
   <use   name="roofit"/>
   <use   name="root"/>

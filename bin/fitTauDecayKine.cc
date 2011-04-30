@@ -453,13 +453,13 @@ struct fitManager
       std::cout << " histogramMean = " << histogramMean << std::endl;
       double histogramMax_x = histogram->GetBinCenter(histogram->GetMaximumBin());
       double histogramMax_y = histogram->GetBinContent(histogram->GetMaximumBin());
-      double histogramRisingEdgeSlope = histogramMax_y/histogramMax_x;
+      double risingEdge_slope = histogramMax_y/histogramMax_x;
       //if ( histogramMax_x > 0.15 ) histogramMax = 0.15;
       std::cout << " histogramMax_x = " << histogramMax_x << std::endl;
       double errEdgePosRight = 0.;
       double errEdgePosLeft  = 0.;
-      double histogramFallingEdgePos = compFallingEdgePos(histogram, errEdgePosRight, errEdgePosLeft);
-      std::cout << " histogramFallingEdgePos = " << histogramFallingEdgePos << std::endl;    
+      double fallingEdge_position = compFallingEdgePos(histogram, errEdgePosRight, errEdgePosLeft);
+      std::cout << " fallingEdge_position = " << fallingEdge_position << std::endl;    
       double histogramRMS = histogram->GetRMS();
       //if ( histogramRMS  > 0.15 ) histogramRMS  = 0.15;
       std::cout << " histogramRMS = " << histogramRMS << std::endl;
@@ -470,45 +470,26 @@ struct fitManager
       //  Form("dRscaled_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), dR_->GetName(), label_.Data());
       //RooFormulaVar* dRscaled = new RooFormulaVar(dRscaledName.Data(), "@0*@1", RooArgList(*dR_, *mom_));
 
+      const double epsilon = 1.e-3;
+
       RooRealVar* gmean = buildPrefitParameter("gmean", momBinName, histogramMax_x, 0.5*histogramMax_x, 1.5*histogramMax_x);
       RooRealVar* gsigma = buildPrefitParameter("gsigma", momBinName, histogramRMS, 0.5*histogramRMS, 2.0*histogramRMS);
-      RooRealVar* slope = buildPrefitParameter("slope", momBinName, 
-					       histogramRisingEdgeSlope, 0.5*histogramRisingEdgeSlope, 1.5*histogramRisingEdgeSlope);
-      RooRealVar* offset = buildPrefitParameter("offset", momBinName, 1.e-3, 0., +0.1*histogramMax_y);
+      RooRealVar* slope = buildPrefitParameter("slope", momBinName, risingEdge_slope, 0.5*risingEdge_slope, 1.5*risingEdge_slope);
+      RooRealVar* offset = buildPrefitParameter("offset", momBinName, epsilon, 0., +0.1*histogramMax_y);
       RooRealVar* C = buildPrefitParameter("C", momBinName, 0.25, 0., 1.);
-      //RooRealVar* kappa = buildPrefitParameter("kappa", momBinName, 1., 0., 1.e+1);
-      //RooRealVar* theta = buildPrefitParameter("theta", momBinName, histogramRMS, 0.5*histogramRMS, 2.0*histogramRMS);
-      //RooRealVar* mu = buildPrefitParameter("mu", momBinName, histogramMax_x, 0.5*histogramMax_x, 1.5*histogramMax_x);
-      RooRealVar* mp = buildPrefitParameter("mp", momBinName, histogramMax_x, 0.5*histogramMax_x, 2.0*histogramMax_x);
+      RooRealVar* mp = buildPrefitParameter("mp", momBinName, histogramMax_x, 0.8*histogramMax_x, fallingEdge_position);
       RooRealVar* width = buildPrefitParameter("width", momBinName, 0.04*histogramRMSgtMax, 1.e-3, 2.0*histogramRMSgtMax);
       RooRealVar* alpha = buildPrefitParameter("alpha", momBinName, 1., 1.e-1, 1.e+1);
-      double x0Min = 0.9*histogramFallingEdgePos - errEdgePosLeft;
-      double x0Max = 1.1*histogramFallingEdgePos + errEdgePosRight;
-      RooRealVar* x0 = buildPrefitParameter("x0", momBinName, histogramFallingEdgePos, x0Min, x0Max);
-      RooRealVar* dx1 = buildPrefitParameter("dx1", momBinName, 3.*histogramRMSgtMax, 0., 12.);
-/*
-      gmean->setVal(2.74104);
-      gmean->setConstant();
-      g2sigma->setVal(1.08494);
-      g2sigma->setConstant();
-      mp->setVal(3.17792);
-      mp->setConstant();
-      width->setVal(3.37095e-2);
-      width->setConstant();
-      alpha->setVal(1.);
-      alpha->setConstant();
-      x0->setVal(3.45);
-      x0->setConstant();
-      dx1->setVal(12.);
-      dx1->setConstant();
- */
+      double x0Min = 0.9*fallingEdge_position - errEdgePosLeft;
+      double x0Max = 1.1*fallingEdge_position + errEdgePosRight;
+      RooRealVar* x0 = buildPrefitParameter("x0", momBinName, fallingEdge_position, x0Min, x0Max);
+      //RooRealVar* dx1 = buildPrefitParameter("dx1", momBinName, 3.*histogramRMSgtMax, 0., 12.);
+      RooRealVar* dx1 = buildPrefitParameter("dx1", momBinName, 12. - epsilon, 0., 12.);
+
       TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), dR_->GetName(), label_.Data());
       prefitModel_[iMomBin] = 
 	new TauDecayKinePdf(modelName.Data(), modelName.Data(), 
-			    sepTimesMom, 
-			    *gmean, *gsigma, *slope, *offset, *C,
-			    //*kappa, *theta, *mu, 
-			    *mp, *width, *alpha, *x0, *dx1);
+			    sepTimesMom, *gmean, *gsigma, *slope, *offset, *C, *mp, *width, *alpha, *x0, *dx1);
 
       RooConstVar* gmeanConstraint_value = 
         new RooConstVar("gmeanConstraint_value", "gmeanConstraint_value", histogramMax_x);
@@ -517,15 +498,6 @@ struct fitManager
       RooGaussian* gmeanConstraint_pdf =
         new RooGaussian("gmeanConstraint_pdf", "gmeanConstraint_pdf",
 			*gmean, *gmeanConstraint_value, *gmeanConstraint_sigma);
-/*
-      RooConstVar* muConstraint_value = 
-        new RooConstVar("muConstraint_value", "muConstraint_value", histogramMax_x);
-      RooConstVar* muConstraint_sigma =
-        new RooConstVar("muConstraint_sigma", "muConstraint_sigma", 0.25*histogramMax_x);
-      RooGaussian* muConstraint_pdf =
-        new RooGaussian("muConstraint_pdf", "muConstraint_pdf",
-			*mu, *muConstraint_value, *muConstraint_sigma);	
- */
       RooConstVar* x0Constraint_value =
         new RooConstVar("x0Constraint_value", "x0Constraint_value", histogramMax_x);
       RooConstVar* x0Constraint_sigma =
@@ -547,23 +519,18 @@ struct fitManager
       //options.Add(new RooCmdArg(RooFit::PrintLevel(-1)));
       //options.Add(new RooCmdArg(RooFit::PrintEvalErrors(-1)));
       //options.Add(new RooCmdArg(RooFit::Warnings(-1)));
-      options.Add(new RooCmdArg(RooFit::ExternalConstraints(RooArgSet(*gmeanConstraint_pdf, 
-                                                                      //*muConstraint_pdf, 
-								      *x0Constraint_pdf, *dx1Constraint_pdf))));
+      options.Add(new RooCmdArg(RooFit::ExternalConstraints(RooArgSet(*gmeanConstraint_pdf, *x0Constraint_pdf, *dx1Constraint_pdf))));
 
 //--- perform stand-alone fit of Gaussian/ExpGamma distribution
       std::cout << "--> fitting Gaussian/ExpGamma distribution..." << std::endl;
       RooLinkedList options_gaussian(options);
-      sepTimesMom.setRange("gaussian", 0., histogramFallingEdgePos);
+      sepTimesMom.setRange("gaussian", 0., fallingEdge_position);
       options_gaussian.Add(new RooCmdArg(RooFit::Range("gaussian")));
       gmean->setConstant(false);
       gsigma->setConstant(false);
       slope->setConstant(false);
       offset->setConstant(false);
       C->setConstant(false);
-      //kappa->setConstant(false);
-      //theta->setConstant(false);
-      //mu->setConstant(false);
       mp->setConstant(true);
       width->setConstant(true);
       alpha->setConstant(true);
@@ -572,19 +539,27 @@ struct fitManager
       RooFitResult* prefitResult_gaussian = prefitModel_[iMomBin]->fitTo(*datahist, options_gaussian);
       delete prefitResult_gaussian;
 
+      printPrefitParameter("gmean", gmean);
+      printPrefitParameter("gsigma", gsigma);
+      printPrefitParameter("slope", slope);
+      printPrefitParameter("offset", offset);
+      printPrefitParameter("C", C);
+      printPrefitParameter("mp", mp);
+      printPrefitParameter("width", width);
+      printPrefitParameter("alpha", alpha);
+      printPrefitParameter("x0", x0);
+      printPrefitParameter("dx1", dx1);
+
 //--- perform stand-alone fit of Landau distribution
       std::cout << "--> fitting Landau distribution..." << std::endl;
       RooLinkedList options_landau(options);
-      sepTimesMom.setRange("landau", histogramFallingEdgePos, TMath::Min(2.*histogramFallingEdgePos, 12.));
+      sepTimesMom.setRange("landau", 0.5*(histogramMax_x + fallingEdge_position), 12.);
       options_landau.Add(new RooCmdArg(RooFit::Range("landau")));
       gmean->setConstant(true);
       gsigma->setConstant(true);
       slope->setConstant(true);
       offset->setConstant(true);
       C->setConstant(true);
-      //kappa->setConstant(true);
-      //theta->setConstant(true);
-      //mu->setConstant(true);
       mp->setConstant(false);
       width->setConstant(false);
       alpha->setConstant(true);
@@ -593,52 +568,57 @@ struct fitManager
       RooFitResult* prefitResult_landau = prefitModel_[iMomBin]->fitTo(*datahist, options_landau);
       delete prefitResult_landau;
 
-//--- start combined fit of Gaussian/ExpGamma + Landau + Exponential model
-      std::cout << "--> starting combined fit of Gaussian/ExpGamma + Landau + Exponential model..." << std::endl;
-      sepTimesMom.setRange("combined", 0., 12.);
-      options_gaussian.Add(new RooCmdArg(RooFit::Range("combined")));
-      gmean->setConstant(false);
-      gsigma->setConstant(false);
-      slope->setConstant(false);
-      offset->setConstant(false);
-      C->setConstant(false);
-      //kappa->setConstant(false);
-      //theta->setConstant(false);
-      //mu->setConstant(false);
-      mp->setConstant(false);
-      width->setConstant(false);
-      alpha->setConstant(false);
-      x0->setConstant(false);
-      dx1->setConstant(false);
-      RooFitResult* prefitResult = prefitModel_[iMomBin]->fitTo(*datahist, options);
-      std::cout << " prefit status = " << prefitResult->status() << " (converged = 0)" << std::endl;
-      delete prefitResult;
- 
-      gmean->setVal(2.74104);
-      gsigma->setVal(1.08494);
-      slope->setVal(1.);
-      offset->setVal(0.);
-      C->setVal(1.);
-      mp->setVal(3.17792);
-      width->setVal(3.37095e-2);
-      alpha->setVal(1.);
-      x0->setVal(3.45);
-      dx1->setVal(12.);
-
       printPrefitParameter("gmean", gmean);
       printPrefitParameter("gsigma", gsigma);
       printPrefitParameter("slope", slope);
       printPrefitParameter("offset", offset);
       printPrefitParameter("C", C);
-      //printPrefitParameter("kappa", kappa);
-      //printPrefitParameter("theta", theta);
-      //printPrefitParameter("mu", mu);
       printPrefitParameter("mp", mp);
       printPrefitParameter("width", width);
       printPrefitParameter("alpha", alpha);
       printPrefitParameter("x0", x0);
       printPrefitParameter("dx1", dx1);
 
+//--- start combined fit of Gaussian/ExpGamma + Landau + Exponential model
+      std::cout << "--> starting combined fit of Gaussian/ExpGamma + Landau + Exponential model..." << std::endl;
+      RooLinkedList options_combined(options);
+      sepTimesMom.setRange("combined", 0., 12.);
+      options_combined.Add(new RooCmdArg(RooFit::Range("combined")));
+      gmean->setConstant(false);
+      gsigma->setConstant(false);
+      slope->setConstant(false);
+      offset->setConstant(false);
+      C->setConstant(false);
+      mp->setConstant(false);
+      width->setConstant(false);
+      alpha->setConstant(false);
+      x0->setConstant(false);
+      dx1->setConstant(false);
+      RooFitResult* prefitResult = prefitModel_[iMomBin]->fitTo(*datahist, options_combined);
+      std::cout << " prefit status = " << prefitResult->status() << " (converged = 0)" << std::endl;
+      delete prefitResult;
+  
+      printPrefitParameter("gmean", gmean);
+      printPrefitParameter("gsigma", gsigma);
+      printPrefitParameter("slope", slope);
+      printPrefitParameter("offset", offset);
+      printPrefitParameter("C", C);
+      printPrefitParameter("mp", mp);
+      printPrefitParameter("width", width);
+      printPrefitParameter("alpha", alpha);
+      printPrefitParameter("x0", x0);
+      printPrefitParameter("dx1", dx1);
+
+      //gmean->setVal(2.74104);
+      //gsigma->setVal(1.08494);
+      //slope->setVal(1.);
+      //offset->setVal(0.);
+      //C->setVal(0.99999);
+      //mp->setVal(3.17792);
+      //width->setVal(3.37095e-2);
+      //alpha->setVal(1.);
+      //x0->setVal(3.45);
+      //dx1->setVal(12.);
 /*
       storePrefitResults(prefitParamLandauMP_[iMomBin], momMin, momMax, prefitResultLandauMP_);
       storePrefitResults(prefitParamLandauWidth_[iMomBin], momMin, momMax, prefitResultLandauWidth_);
@@ -652,10 +632,10 @@ struct fitManager
     
       TString frameTitle = Form("%s %s: P_{T} = %2.0f..%2.0f GeV", dR_->GetName(), decayMode_string.Data(), momMin, momMax);
       RooPlot* frame = sepTimesMom.frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(100));
-    
-      datahist->plotOn(frame);
 
-      prefitModel_[iMomBin]->plotOn(frame);
+      datahist->plotOn(frame);
+    
+      prefitModel_[iMomBin]->plotOn(frame, RooFit::Range("combined"), RooFit::NormRange("combined"));
 
       frame->Draw();
 

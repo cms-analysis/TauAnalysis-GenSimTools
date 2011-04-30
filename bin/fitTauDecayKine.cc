@@ -78,6 +78,19 @@ void pdfTimingTest(RooAbsPdf* pdf, RooRealVar* mom, RooRealVar* sep)
 //-------------------------------------------------------------------------------
 //
 
+void enlargeHistogramErrors(TH1* histogram)
+{
+  unsigned numBins = histogram->GetNbinsX();
+  for ( unsigned iBin = 1; iBin <= numBins; ++iBin ) {
+    double binContent = histogram->GetBinContent(iBin);
+    double binError = histogram->GetBinError(iBin);
+
+    double enlargedBinError = 0.1*binContent;
+
+    histogram->SetBinError(iBin, TMath::Sqrt(binError*binError + enlargedBinError*enlargedBinError));
+  }
+}
+
 double compHistogramRMSgtMax(TH1* histogram)
 {
   int binMax = histogram->GetMaximumBin();
@@ -104,8 +117,10 @@ double compHistogramRMSgtMax(TH1* histogram)
   return rms;
 }
 
-double compFallingEdgePos(TH1* histogram)
+double compFallingEdgePos(TH1* histogram, double& errEdgePosRight, double& errEdgePosLeft)
 {
+  std::cout << "<compFallingEdgePos>:" << std::endl;
+
   int numBins = histogram->GetNbinsX();
 
   double lastBinContent = histogram->GetBinContent(1);
@@ -130,12 +145,32 @@ double compFallingEdgePos(TH1* histogram)
   }
 
   double window3derrivativeMin = 0;
-  double binCenter_window3derrivativeMin = -1.;
+  double binWindow3derrivativeMin = -1.;
   for ( int iBin = 1; iBin <= numBins; ++iBin ) {
     if ( window3derrivatives[iBin] < window3derrivativeMin ) {
-      binCenter_window3derrivativeMin = histogram->GetBinCenter(iBin);
+      binWindow3derrivativeMin = iBin;
       window3derrivativeMin = window3derrivatives[iBin];
     }
+  }
+  
+  double binCenter_window3derrivativeMin = -1.;
+  if ( binWindow3derrivativeMin > 0 ) {
+    binCenter_window3derrivativeMin = histogram->GetBinCenter(binWindow3derrivativeMin);
+    
+    double diffBinContents = 
+      histogram->GetBinContent(binWindow3derrivativeMin + 1) - histogram->GetBinContent(binWindow3derrivativeMin - 1);
+    double diffBinCenters  = 
+      histogram->GetBinCenter(binWindow3derrivativeMin + 1) - histogram->GetBinCenter(binWindow3derrivativeMin - 1);
+
+    double derrivative_average = diffBinContents/diffBinCenters;
+    std::cout << " derrivative_average = " << derrivative_average << std::endl;
+
+    errEdgePosRight = TMath::Abs(histogram->GetBinContent(binWindow3derrivativeMin)/derrivative_average);
+    std::cout << " errEdgePosRight = " << errEdgePosRight << std::endl;
+
+    double histogramMax = histogram->GetBinContent(histogram->GetMaximumBin());      
+    errEdgePosLeft  = TMath::Abs((histogramMax - histogram->GetBinContent(binWindow3derrivativeMin))/derrivative_average);
+    std::cout << " errEdgePosLeft = " << errEdgePosLeft << std::endl;
   }
 
   return binCenter_window3derrivativeMin;
@@ -403,8 +438,9 @@ struct fitManager
 
       TString histogramName = 
 	Form("%s_%s%s%2.0fto%2.0f", decayMode_string.Data(), label.Data(), momName_string.Data(), momMin, momMax);
-      TH1* histogram = (TH1*)inputFile->Get(TString(inputDirName_full.Data()).Append("/").Append(histogramName.Data()));
+      TH1* histogram = (TH1*)inputFile->Get(TString(inputDirName_full.Data()).Append("/").Append(histogramName.Data()));      
       std::cout << " histogramName = " << histogramName.Data() << ": histogram = " << histogram << std::endl;
+      enlargeHistogramErrors(histogram);
 
       TString datahistName = TString(histogramName).Append("_datahist");
       RooDataHist* datahist = new RooDataHist(datahistName.Data(), datahistName.Data(), RooArgList(sepTimesMom), histogram);
@@ -415,11 +451,15 @@ struct fitManager
       double histogramMean = histogram->GetMean();
       //if ( histogramMean > 0.15 ) histogramMean = 0.15;
       std::cout << " histogramMean = " << histogramMean << std::endl;
-      double histogramMax = histogram->GetBinCenter(histogram->GetMaximumBin());
-      //if ( histogramMax > 0.15 ) histogramMax = 0.15;
-      std::cout << " histogramMax = " << histogramMax << std::endl;
-      double histogramFallingEdgePos = compFallingEdgePos(histogram);
-      std::cout << " histogramFallingEdgePos = " << histogramFallingEdgePos << std::endl;
+      double histogramMax_x = histogram->GetBinCenter(histogram->GetMaximumBin());
+      double histogramMax_y = histogram->GetBinContent(histogram->GetMaximumBin());
+      double histogramRisingEdgeSlope = histogramMax_y/histogramMax_x;
+      //if ( histogramMax_x > 0.15 ) histogramMax = 0.15;
+      std::cout << " histogramMax_x = " << histogramMax_x << std::endl;
+      double errEdgePosRight = 0.;
+      double errEdgePosLeft  = 0.;
+      double histogramFallingEdgePos = compFallingEdgePos(histogram, errEdgePosRight, errEdgePosLeft);
+      std::cout << " histogramFallingEdgePos = " << histogramFallingEdgePos << std::endl;    
       double histogramRMS = histogram->GetRMS();
       //if ( histogramRMS  > 0.15 ) histogramRMS  = 0.15;
       std::cout << " histogramRMS = " << histogramRMS << std::endl;
@@ -430,20 +470,23 @@ struct fitManager
       //  Form("dRscaled_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), dR_->GetName(), label_.Data());
       //RooFormulaVar* dRscaled = new RooFormulaVar(dRscaledName.Data(), "@0*@1", RooArgList(*dR_, *mom_));
 
-      RooRealVar* gmean = buildPrefitParameter("gmean", momBinName, histogramMax, 0.5*histogramMax, 1.5*histogramMax);
-      RooRealVar* g2sigma = buildPrefitParameter("g2sigma", momBinName, histogramRMS, 0.5*histogramRMS, 2.0*histogramRMS);
-      RooRealVar* g4sigma = buildPrefitParameter("g4sigma", momBinName, histogramRMS, 0.5*histogramRMS, 2.0*histogramRMS);
-      g4sigma->setConstant();
-      RooRealVar* C = buildPrefitParameter("C", momBinName, 0., 0., 1.);
-      C->setConstant();
-      RooRealVar* mp = buildPrefitParameter("mp", momBinName, histogramMax, 0.5*histogramMax, 2.0*histogramMax);
-      RooRealVar* width = buildPrefitParameter("width", momBinName, histogramRMSgtMax, 0.5*histogramRMSgtMax, 2.0*histogramRMSgtMax);
+      RooRealVar* gmean = buildPrefitParameter("gmean", momBinName, histogramMax_x, 0.5*histogramMax_x, 1.5*histogramMax_x);
+      RooRealVar* gsigma = buildPrefitParameter("gsigma", momBinName, histogramRMS, 0.5*histogramRMS, 2.0*histogramRMS);
+      RooRealVar* slope = buildPrefitParameter("slope", momBinName, 
+					       histogramRisingEdgeSlope, 0.5*histogramRisingEdgeSlope, 1.5*histogramRisingEdgeSlope);
+      RooRealVar* offset = buildPrefitParameter("offset", momBinName, 1.e-3, 0., +0.1*histogramMax_y);
+      RooRealVar* C = buildPrefitParameter("C", momBinName, 0.25, 0., 1.);
+      //RooRealVar* kappa = buildPrefitParameter("kappa", momBinName, 1., 0., 1.e+1);
+      //RooRealVar* theta = buildPrefitParameter("theta", momBinName, histogramRMS, 0.5*histogramRMS, 2.0*histogramRMS);
+      //RooRealVar* mu = buildPrefitParameter("mu", momBinName, histogramMax_x, 0.5*histogramMax_x, 1.5*histogramMax_x);
+      RooRealVar* mp = buildPrefitParameter("mp", momBinName, histogramMax_x, 0.5*histogramMax_x, 2.0*histogramMax_x);
+      RooRealVar* width = buildPrefitParameter("width", momBinName, 0.04*histogramRMSgtMax, 1.e-3, 2.0*histogramRMSgtMax);
       RooRealVar* alpha = buildPrefitParameter("alpha", momBinName, 1., 1.e-1, 1.e+1);
-      double x0Min = 0.9*histogramFallingEdgePos - histogramRMSgtMax;
-      double x0Max = 1.1*histogramFallingEdgePos + histogramRMSgtMax;
+      double x0Min = 0.9*histogramFallingEdgePos - errEdgePosLeft;
+      double x0Max = 1.1*histogramFallingEdgePos + errEdgePosRight;
       RooRealVar* x0 = buildPrefitParameter("x0", momBinName, histogramFallingEdgePos, x0Min, x0Max);
       RooRealVar* dx1 = buildPrefitParameter("dx1", momBinName, 3.*histogramRMSgtMax, 0., 12.);
-
+/*
       gmean->setVal(2.74104);
       gmean->setConstant();
       g2sigma->setVal(1.08494);
@@ -458,49 +501,144 @@ struct fitManager
       x0->setConstant();
       dx1->setVal(12.);
       dx1->setConstant();
-
+ */
       TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), dR_->GetName(), label_.Data());
       prefitModel_[iMomBin] = 
 	new TauDecayKinePdf(modelName.Data(), modelName.Data(), 
-			    sepTimesMom, *gmean, *g2sigma, *g4sigma, *C, *mp, *width, *alpha, *x0, *dx1);
+			    sepTimesMom, 
+			    *gmean, *gsigma, *slope, *offset, *C,
+			    //*kappa, *theta, *mu, 
+			    *mp, *width, *alpha, *x0, *dx1);
 
       RooConstVar* gmeanConstraint_value = 
-        new RooConstVar("gmeanConstraint_value", "gmeanConstraint_value", histogramMax);
+        new RooConstVar("gmeanConstraint_value", "gmeanConstraint_value", histogramMax_x);
       RooConstVar* gmeanConstraint_sigma =
-        new RooConstVar("gmeanConstraint_sigma", "gmeanConstraint_sigma", 0.25*histogramMax);
+        new RooConstVar("gmeanConstraint_sigma", "gmeanConstraint_sigma", 0.25*histogramMax_x);
       RooGaussian* gmeanConstraint_pdf =
         new RooGaussian("gmeanConstraint_pdf", "gmeanConstraint_pdf",
 			*gmean, *gmeanConstraint_value, *gmeanConstraint_sigma);
+/*
+      RooConstVar* muConstraint_value = 
+        new RooConstVar("muConstraint_value", "muConstraint_value", histogramMax_x);
+      RooConstVar* muConstraint_sigma =
+        new RooConstVar("muConstraint_sigma", "muConstraint_sigma", 0.25*histogramMax_x);
+      RooGaussian* muConstraint_pdf =
+        new RooGaussian("muConstraint_pdf", "muConstraint_pdf",
+			*mu, *muConstraint_value, *muConstraint_sigma);	
+ */
       RooConstVar* x0Constraint_value =
-        new RooConstVar("x0Constraint_value", "x0Constraint_value", histogramMax);
+        new RooConstVar("x0Constraint_value", "x0Constraint_value", histogramMax_x);
       RooConstVar* x0Constraint_sigma =
-        new RooConstVar("x0Constraint_sigma", "x0Constraint_sigma", 0.5*histogramMax);
+        new RooConstVar("x0Constraint_sigma", "x0Constraint_sigma", 0.5*histogramMax_x);
       RooGaussian* x0Constraint_pdf =
         new RooGaussian("x0Constraint_pdf", "x0Constraint_pdf",
 			*x0, *x0Constraint_value, *x0Constraint_sigma);
-
+      RooConstVar* dx1Constraint_value =
+        new RooConstVar("dx1Constraint_value", "dx1Constraint_value", 12.);
+      RooConstVar* dx1Constraint_sigma =
+        new RooConstVar("dx1Constraint_sigma", "dx1Constraint_sigma", 12.);
+      RooGaussian* dx1Constraint_pdf =
+        new RooGaussian("dx1Constraint_pdf", "dx1Constraint_pdf",
+			*dx1, *dx1Constraint_value, *dx1Constraint_sigma);
+      
       RooLinkedList options;
       options.Add(new RooCmdArg(RooFit::Save(true)));
+      options.Add(new RooCmdArg(RooFit::SumW2Error(true)));
       //options.Add(new RooCmdArg(RooFit::PrintLevel(-1)));
       //options.Add(new RooCmdArg(RooFit::PrintEvalErrors(-1)));
       //options.Add(new RooCmdArg(RooFit::Warnings(-1)));
-      options.Add(new RooCmdArg(RooFit::ExternalConstraints(RooArgSet(*gmeanConstraint_pdf, *x0Constraint_pdf))));
-std::cout << "break-point 1 reached" << std::endl;
+      options.Add(new RooCmdArg(RooFit::ExternalConstraints(RooArgSet(*gmeanConstraint_pdf, 
+                                                                      //*muConstraint_pdf, 
+								      *x0Constraint_pdf, *dx1Constraint_pdf))));
+
+//--- perform stand-alone fit of Gaussian/ExpGamma distribution
+      std::cout << "--> fitting Gaussian/ExpGamma distribution..." << std::endl;
+      RooLinkedList options_gaussian(options);
+      sepTimesMom.setRange("gaussian", 0., histogramFallingEdgePos);
+      options_gaussian.Add(new RooCmdArg(RooFit::Range("gaussian")));
+      gmean->setConstant(false);
+      gsigma->setConstant(false);
+      slope->setConstant(false);
+      offset->setConstant(false);
+      C->setConstant(false);
+      //kappa->setConstant(false);
+      //theta->setConstant(false);
+      //mu->setConstant(false);
+      mp->setConstant(true);
+      width->setConstant(true);
+      alpha->setConstant(true);
+      x0->setConstant(true);
+      dx1->setConstant(true);
+      RooFitResult* prefitResult_gaussian = prefitModel_[iMomBin]->fitTo(*datahist, options_gaussian);
+      delete prefitResult_gaussian;
+
+//--- perform stand-alone fit of Landau distribution
+      std::cout << "--> fitting Landau distribution..." << std::endl;
+      RooLinkedList options_landau(options);
+      sepTimesMom.setRange("landau", histogramFallingEdgePos, TMath::Min(2.*histogramFallingEdgePos, 12.));
+      options_landau.Add(new RooCmdArg(RooFit::Range("landau")));
+      gmean->setConstant(true);
+      gsigma->setConstant(true);
+      slope->setConstant(true);
+      offset->setConstant(true);
+      C->setConstant(true);
+      //kappa->setConstant(true);
+      //theta->setConstant(true);
+      //mu->setConstant(true);
+      mp->setConstant(false);
+      width->setConstant(false);
+      alpha->setConstant(true);
+      x0->setConstant(true);
+      dx1->setConstant(true);
+      RooFitResult* prefitResult_landau = prefitModel_[iMomBin]->fitTo(*datahist, options_landau);
+      delete prefitResult_landau;
+
+//--- start combined fit of Gaussian/ExpGamma + Landau + Exponential model
+      std::cout << "--> starting combined fit of Gaussian/ExpGamma + Landau + Exponential model..." << std::endl;
+      sepTimesMom.setRange("combined", 0., 12.);
+      options_gaussian.Add(new RooCmdArg(RooFit::Range("combined")));
+      gmean->setConstant(false);
+      gsigma->setConstant(false);
+      slope->setConstant(false);
+      offset->setConstant(false);
+      C->setConstant(false);
+      //kappa->setConstant(false);
+      //theta->setConstant(false);
+      //mu->setConstant(false);
+      mp->setConstant(false);
+      width->setConstant(false);
+      alpha->setConstant(false);
+      x0->setConstant(false);
+      dx1->setConstant(false);
       RooFitResult* prefitResult = prefitModel_[iMomBin]->fitTo(*datahist, options);
-std::cout << "break-point 2 reached" << std::endl;
       std::cout << " prefit status = " << prefitResult->status() << " (converged = 0)" << std::endl;
       delete prefitResult;
-std::cout << "break-point 3 reached" << std::endl;
+ 
+      gmean->setVal(2.74104);
+      gsigma->setVal(1.08494);
+      slope->setVal(1.);
+      offset->setVal(0.);
+      C->setVal(1.);
+      mp->setVal(3.17792);
+      width->setVal(3.37095e-2);
+      alpha->setVal(1.);
+      x0->setVal(3.45);
+      dx1->setVal(12.);
+
       printPrefitParameter("gmean", gmean);
-      printPrefitParameter("g2sigma", g2sigma);
-      printPrefitParameter("g4sigma", g4sigma);
+      printPrefitParameter("gsigma", gsigma);
+      printPrefitParameter("slope", slope);
+      printPrefitParameter("offset", offset);
       printPrefitParameter("C", C);
+      //printPrefitParameter("kappa", kappa);
+      //printPrefitParameter("theta", theta);
+      //printPrefitParameter("mu", mu);
       printPrefitParameter("mp", mp);
       printPrefitParameter("width", width);
       printPrefitParameter("alpha", alpha);
       printPrefitParameter("x0", x0);
       printPrefitParameter("dx1", dx1);
-std::cout << "break-point 4 reached" << std::endl;
+
 /*
       storePrefitResults(prefitParamLandauMP_[iMomBin], momMin, momMax, prefitResultLandauMP_);
       storePrefitResults(prefitParamLandauWidth_[iMomBin], momMin, momMax, prefitResultLandauWidth_);

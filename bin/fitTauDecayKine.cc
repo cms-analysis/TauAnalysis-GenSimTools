@@ -22,6 +22,8 @@
 #include "RooWorkspace.h"
 #include "RooPlot.h"
 
+#include <Math/PdfFuncMathCore.h>
+
 #include <TString.h>
 #include <TFile.h>
 #include <TChain.h>
@@ -123,57 +125,89 @@ double compFallingEdgePos(TH1* histogram, double& errEdgePosRight, double& errEd
 
   int numBins = histogram->GetNbinsX();
 
-  double lastBinContent = histogram->GetBinContent(1);
-  double lastBinCenter = histogram->GetBinCenter(1);
+  std::vector<double> window5derrivatives(numBins);
 
-  std::vector<double> derrivatives(numBins + 1);
- 
-  for ( int iBin = 2; iBin <= numBins; ++iBin ) {
-    double binContent = histogram->GetBinContent(iBin);
-    double binCenter = histogram->GetBinCenter(iBin);
+  for ( int iBin = 3; iBin <= (numBins - 2); ++iBin ) {
+    double diffBinContent = histogram->GetBinContent(iBin + 2) - histogram->GetBinContent(iBin - 2);
+    double diffBinCenter  = histogram->GetBinCenter(iBin + 2) - histogram->GetBinCenter(iBin - 2);
 
-    derrivatives[iBin] = (binContent - lastBinContent)/(binCenter - lastBinCenter);
-
-    lastBinContent = binContent;
-    lastBinCenter = binCenter;
+    window5derrivatives[iBin] = diffBinContent/diffBinCenter;
   }
 
-  std::vector<double> window3derrivatives(numBins + 1);
-
-  for ( int iBin = 2; iBin <= (numBins - 1); ++iBin ) {
-    window3derrivatives[iBin] = derrivatives[iBin - 1] + derrivatives[iBin] + derrivatives[iBin + 1];
-  }
-
-  double window3derrivativeMin = 0;
-  double binWindow3derrivativeMin = -1.;
-  for ( int iBin = 1; iBin <= numBins; ++iBin ) {
-    if ( window3derrivatives[iBin] < window3derrivativeMin ) {
-      binWindow3derrivativeMin = iBin;
-      window3derrivativeMin = window3derrivatives[iBin];
+  double minWindow5derrivative = 0;
+  int binFallingEdge = -1.;
+  double fallindEdgePos = -1.;
+  for ( int iBin = 3; iBin <= (numBins - 2); ++iBin ) {
+    if ( window5derrivatives[iBin] < minWindow5derrivative ) {
+      binFallingEdge = iBin;
+      fallindEdgePos = histogram->GetBinCenter(iBin);
+      minWindow5derrivative = window5derrivatives[iBin];
     }
   }
-  
-  double binCenter_window3derrivativeMin = -1.;
-  if ( binWindow3derrivativeMin > 0 ) {
-    binCenter_window3derrivativeMin = histogram->GetBinCenter(binWindow3derrivativeMin);
-    
-    double diffBinContents = 
-      histogram->GetBinContent(binWindow3derrivativeMin + 1) - histogram->GetBinContent(binWindow3derrivativeMin - 1);
-    double diffBinCenters  = 
-      histogram->GetBinCenter(binWindow3derrivativeMin + 1) - histogram->GetBinCenter(binWindow3derrivativeMin - 1);
 
-    double derrivative_average = diffBinContents/diffBinCenters;
-    std::cout << " derrivative_average = " << derrivative_average << std::endl;
+  binFallingEdge -= 1; // CV: "phenomenological" correction...
 
-    errEdgePosRight = TMath::Abs(histogram->GetBinContent(binWindow3derrivativeMin)/derrivative_average);
+  if ( binFallingEdge > 0 ) {
+    errEdgePosRight = TMath::Abs(histogram->GetBinContent(binFallingEdge)/minWindow5derrivative);
     std::cout << " errEdgePosRight = " << errEdgePosRight << std::endl;
-
-    double histogramMax = histogram->GetBinContent(histogram->GetMaximumBin());      
-    errEdgePosLeft  = TMath::Abs((histogramMax - histogram->GetBinContent(binWindow3derrivativeMin))/derrivative_average);
+    
+    double histogramMax_y = histogram->GetBinContent(histogram->GetMaximumBin());      
+    errEdgePosLeft  = TMath::Abs((histogramMax_y - histogram->GetBinContent(binFallingEdge))/minWindow5derrivative);
     std::cout << " errEdgePosLeft = " << errEdgePosLeft << std::endl;
   }
 
-  return binCenter_window3derrivativeMin;
+  return fallindEdgePos;
+}
+
+double compFCN(TH1* histogram, int iBin0, int iBin1, double mom, double mp, double width)
+{
+  //std::cout << "<compFCN>:" << std::endl;
+
+  double retVal = 0.;
+  
+  double histogram_sum = 0.;
+  double landau_integral = 0.;
+  for ( int iBin = iBin0; iBin <= iBin1; ++iBin ) {
+    histogram_sum += histogram->GetBinContent(iBin);
+    landau_integral += ::ROOT::Math::landau_pdf(mom*(histogram->GetBinCenter(iBin) - mp)/width);
+  }
+
+  //std::cout << " histogram_sum = " << histogram_sum << std::endl;
+  //std::cout << " landau_integral = " << landau_integral << std::endl;
+  
+  double landau_norm = (histogram_sum/landau_integral);
+  //std::cout << " landau_norm = " << landau_norm << std::endl;
+  
+  for ( int iBin = iBin0; iBin <= iBin1; ++iBin ) {
+    double binCenter = histogram->GetBinCenter(iBin);
+    
+    double binContent = histogram->GetBinContent(iBin);
+    //std::cout << "binContent = " << binContent << std::endl; 
+    double binError = histogram->GetBinError(iBin);
+    
+    double landau = landau_norm*::ROOT::Math::landau_pdf(mom*(binCenter - mp)/width);
+    //std::cout << "landau = " << landau << std::endl; 
+    
+    double pull = binContent - landau;
+    if ( binError > 0. ) pull /= binError;
+    //std::cout << "binCenter = " << binCenter << ": pull = " << pull << std::endl;
+    
+    retVal += pull*pull;
+  }
+
+  //std::cout << "--> returning retVal = " << retVal << std::endl;
+
+  return retVal;
+}
+
+void setRealVar_Value_Range(RooRealVar* x, double value, double xMin, double xMax)
+{
+  bool isConstant = x->isConstant();
+  x->setConstant(false);
+  x->setRange(-1.e+6, +1.e+6);
+  x->setVal(value);
+  x->setRange(xMin, xMax);
+  x->setConstant(isConstant);
 }
 
 //
@@ -224,48 +258,62 @@ struct fitManager
 {
   fitManager(RooRealVar* mom, RooRealVar* dR, int decayMode, const TString& label, const TArrayD& momBinning)
     : mom_(mom),
-      dR_(dR),
+      sep_(dR),
       decayMode_(decayMode),
       label_(label),
       momBinning_(momBinning),
-      prefitParamLandauMP_(momBinning.GetSize() - 1),
-      prefitParamLandauWidth_(momBinning.GetSize() - 1),
-      prefitParamLandauScaleFactor_(momBinning.GetSize() - 1),
-      prefitLandauScale_(momBinning.GetSize() - 1),
-      prefitLandau_(momBinning.GetSize() - 1), 
-      prefitParamGaussianMean_(momBinning.GetSize() - 1),
-      prefitParamGaussianSigma_(momBinning.GetSize() - 1),
-      prefitGaussian_(momBinning.GetSize() - 1), 
-      prefitParamMix_(momBinning.GetSize() - 1),
+      prefitParamGMean_(momBinning.GetSize() - 1),
+      prefitParamGSigma_(momBinning.GetSize() - 1),
+      prefitParamSlope_(momBinning.GetSize() - 1),
+      prefitParamOffset_(momBinning.GetSize() - 1),
+      prefitParamC_(momBinning.GetSize() - 1),
+      prefitParamMP1_(momBinning.GetSize() - 1),
+      prefitParamWidth1_(momBinning.GetSize() - 1),
+      prefitParamMP2_(momBinning.GetSize() - 1),
+      prefitParamWidth2_(momBinning.GetSize() - 1),
+      prefitParamX0_(momBinning.GetSize() - 1),
+      prefitParamDeltaX1_(momBinning.GetSize() - 1),
       prefitModel_(momBinning.GetSize() - 1),
-      fitParamCoeffLandauMP_(5),
-      fitParamLandauMP_(0),
-      fitParamCoeffLandauWidth_(5),
-      fitParamLandauWidth_(0),  
-      fitParamCoeffLandauScaleFactor_(5),
-      fitParamLandauScaleFactor_(0),  
-      fitLandauScale_(0),
-      fitLandau_(0),
-      fitParamCoeffGaussianMean_(5),
-      fitParamGaussianMean_(0),
-      fitParamCoeffGaussianSigma_(5),
-      fitParamGaussianSigma_(0),
-      fitGaussian_(0),
-      fitParamCoeffMix_(5),
-      fitParamMix_(0),
+      fitParamCoeffGMean_(5),
+      fitParamGMean_(0),
+      fitParamCoeffGSigma_(5),
+      fitParamGSigma_(0),
+      fitParamCoeffSlope_(5),
+      fitParamSlope_(0),
+      fitParamCoeffOffset_(5),
+      fitParamOffset_(0),
+      fitParamCoeffC_(5),
+      fitParamC_(0),
+      fitParamCoeffMP1_(5),
+      fitParamMP1_(0),
+      fitParamCoeffWidth1_(5),
+      fitParamWidth1_(0),
+      fitParamCoeffMP2_(5),
+      fitParamMP2_(0),
+      fitParamCoeffWidth2_(5),
+      fitParamWidth2_(0),
+      fitParamCoeffX0_(5),
+      fitParamX0_(0),
+      fitParamCoeffDeltaX1_(5),
+      fitParamDeltaX1_(0),
       fitModel_(0)
   {
     std::cout << "<fitManager::fitManager>:" << std::endl;
     std::cout << " mom = " << mom_->GetName() << std::endl;
-    std::cout << " dR = " << dR_->GetName() << std::endl;
+    std::cout << " dR = " << sep_->GetName() << std::endl;
     std::cout << " decayMode = " << getDecayMode_string(decayMode_) << std::endl;
 
-    prefitResultLandauMP_ = new TGraphErrors();
-    prefitResultLandauWidth_ = new TGraphErrors();
-    prefitResultLandauScaleFactor_ = new TGraphErrors();
-    prefitResultGaussianMean_ = new TGraphErrors();
-    prefitResultGaussianSigma_ = new TGraphErrors();
-    prefitResultMix_ = new TGraphErrors();
+    prefitResultGMean_ = new TGraphErrors();
+    prefitResultGSigma_ = new TGraphErrors();
+    prefitResultSlope_ = new TGraphErrors();
+    prefitResultOffset_ = new TGraphErrors();
+    prefitResultC_ = new TGraphErrors();
+    prefitResultMP1_ = new TGraphErrors();
+    prefitResultWidth1_ = new TGraphErrors();
+    prefitResultMP2_ = new TGraphErrors();
+    prefitResultWidth2_ = new TGraphErrors();
+    prefitResultX0_ = new TGraphErrors();
+    prefitResultDeltaX1_ = new TGraphErrors();
 
 //--- parametrize pt/energy dependence of fitParameters by (orthogonal) Chebyshev polynomials
 //   ( cf. http://mathworld.wolfram.com/ChebyshevPolynomialoftheFirstKind.html )
@@ -273,61 +321,87 @@ struct fitManager
       "(1./(x*x*x*x))*([0] + [1]*x + [2]*(2.0*x*x - 1.0)" 
       " + [3]*(4.0*x*x*x - 3.0*x) + [4]*(8.0*x*x*x*x - 8.0*x*x + 1.0))";
     momParametrization_forTFormula_ = TString("TMath::Abs(").Append(momParametrizationTFormula).Append(")");
-    momParametrizationMix_forTFormula_ = TString("0.5*(1.0 + TMath::TanH(").Append(momParametrization_forTFormula_).Append("))");
+    momParametrizationC_forTFormula_ = TString("0.5*(1.0 + TMath::TanH(").Append(momParametrization_forTFormula_).Append("))");
     TString momParametrizationRooFit = 
       "(1./(@5*@5*@5*@5))*(@0 + @1*@5 + @2*(2.0*@5*@5 - 1.0)" 
       " + @3*(4.0*@5*@5*@5 - 3.0*@5) + @4*(8.0*@5*@5*@5*@5 - 8.0*@5*@5 + 1.0))";
     momParametrization_forRooFit_ = TString("TMath::Abs(").Append(momParametrizationRooFit).Append(")");
-    momParametrizationMix_forRooFit_ = TString("0.5*(1.0 + TMath::TanH(").Append(momParametrization_forRooFit_).Append("))");
+    momParametrizationC_forRooFit_ = TString("0.5*(1.0 + TMath::TanH(").Append(momParametrization_forRooFit_).Append("))");
     
-    momParamLandauMP_ = bookTF1("LandauMP", momParametrization_forTFormula_);
-    momParamLandauWidth_ = bookTF1("LandauWidth", momParametrization_forTFormula_);
-    momParamLandauScaleFactor_ = bookTF1("LandauScaleFactor", momParametrization_forTFormula_);
-    momParamGaussianMean_ = bookTF1("Gaussian_mean", momParametrization_forTFormula_);
-    momParamGaussianSigma_ = bookTF1("Gaussian_sigma", momParametrization_forTFormula_);
-    momParamMix_ = bookTF1("mix", momParametrizationMix_forTFormula_);
+    momParamGMean_ = bookTF1("GMean", momParametrization_forTFormula_);
+    momParamGSigma_ = bookTF1("GSigma", momParametrization_forTFormula_);
+    momParamSlope_ = bookTF1("Slope", momParametrization_forTFormula_);
+    momParamOffset_ = bookTF1("Offset", momParametrization_forTFormula_);
+    momParamC_ = bookTF1("C", momParametrizationC_forTFormula_);
+    momParamMP1_ = bookTF1("MP1", momParametrization_forTFormula_);
+    momParamWidth1_ = bookTF1("Width1", momParametrization_forTFormula_);
+    momParamMP2_ = bookTF1("MP2", momParametrization_forTFormula_);
+    momParamWidth2_ = bookTF1("Width2", momParametrization_forTFormula_);
+    momParamX0_ = bookTF1("X0", momParametrization_forTFormula_);
+    momParamDeltaX1_ = bookTF1("DeltaX1", momParametrization_forTFormula_);
   }
 
   ~fitManager()
   {
-    clearCollection(prefitParamLandauMP_);
-    clearCollection(prefitParamLandauWidth_);
-    clearCollection(prefitParamLandauScaleFactor_);
-    clearCollection(prefitLandauScale_);
-    clearCollection(prefitLandau_);
-    clearCollection(prefitParamGaussianMean_);
-    clearCollection(prefitParamGaussianSigma_);
-    clearCollection(prefitGaussian_);
-    clearCollection(prefitParamMix_);
+    clearCollection(prefitParamGMean_);
+    clearCollection(prefitParamGSigma_);
+    clearCollection(prefitParamSlope_);
+    clearCollection(prefitParamOffset_);
+    clearCollection(prefitParamC_);
+    clearCollection(prefitParamMP1_);
+    clearCollection(prefitParamWidth1_);
+    clearCollection(prefitParamMP2_);
+    clearCollection(prefitParamWidth2_);
+    clearCollection(prefitParamX0_);
+    clearCollection(prefitParamDeltaX1_);
     clearCollection(prefitModel_);
 
-    delete prefitResultLandauMP_;
-    delete prefitResultLandauWidth_;
-    delete prefitResultLandauScaleFactor_;
-    delete prefitResultGaussianMean_;
-    delete prefitResultGaussianSigma_;
+    delete prefitResultGMean_;
+    delete prefitResultGSigma_;
+    delete prefitResultSlope_;
+    delete prefitResultOffset_;
+    delete prefitResultC_;
+    delete prefitResultMP1_;
+    delete prefitResultWidth1_;
+    delete prefitResultMP2_;
+    delete prefitResultWidth2_;
+    delete prefitResultX0_;
+    delete prefitResultDeltaX1_;
 
-    delete momParamLandauMP_;
-    delete momParamLandauWidth_;
-    delete momParamLandauScaleFactor_;
-    delete momParamGaussianMean_;
-    delete momParamGaussianSigma_;
-    delete momParamMix_;
+    delete momParamGMean_;
+    delete momParamGSigma_;
+    delete momParamSlope_;
+    delete momParamOffset_;
+    delete momParamC_;
+    delete momParamMP1_;
+    delete momParamWidth1_;
+    delete momParamMP2_;
+    delete momParamWidth2_;
+    delete momParamX0_;
+    delete momParamDeltaX1_;
     
-    clearCollection(fitParamCoeffLandauMP_);
-    delete fitParamLandauMP_;
-    clearCollection(fitParamCoeffLandauWidth_);
-    delete fitParamLandauWidth_;
-    clearCollection(fitParamCoeffLandauScaleFactor_);
-    delete fitParamLandauScaleFactor_;
-    delete fitLandauScale_;
-    delete fitLandau_;
-    clearCollection(fitParamCoeffGaussianMean_);
-    delete fitParamGaussianMean_;
-    clearCollection(fitParamCoeffGaussianSigma_);
-    delete fitParamGaussianSigma_;
-    delete fitGaussian_;
-    delete fitParamMix_;
+    clearCollection(fitParamCoeffGMean_);
+    delete fitParamGMean_;
+    clearCollection(fitParamCoeffGSigma_);
+    delete fitParamGSigma_;
+    clearCollection(fitParamCoeffSlope_);
+    delete fitParamSlope_;
+    clearCollection(fitParamCoeffOffset_);
+    delete fitParamOffset_;
+    clearCollection(fitParamCoeffC_);
+    delete fitParamC_;
+    clearCollection(fitParamCoeffMP1_);
+    delete fitParamMP1_;
+    clearCollection(fitParamCoeffWidth1_);
+    delete fitParamWidth1_;
+    clearCollection(fitParamCoeffMP2_);
+    delete fitParamMP2_;
+    clearCollection(fitParamCoeffWidth2_);
+    delete fitParamWidth2_;
+    clearCollection(fitParamCoeffX0_);
+    delete fitParamX0_;
+    clearCollection(fitParamCoeffDeltaX1_);
+    delete fitParamDeltaX1_;
     delete fitModel_;
   }
 
@@ -336,7 +410,7 @@ struct fitManager
     std::cout << "<fitManager::bookTF1>:" << std::endl;
 
     TString decayMode_string = getDecayMode_string(decayMode_);
-    TString tf1Name = Form("%s_%s_%s_%s", fitParameter.Data(), dR_->GetName(), decayMode_string.Data(), label_.Data());
+    TString tf1Name = Form("%s_%s_%s_%s", fitParameter.Data(), sep_->GetName(), decayMode_string.Data(), label_.Data());
     double momMin = momBinning_[0];
     double momMax = momBinning_[momBinning_.GetSize() - 1];
     TF1* tf1 = new TF1(tf1Name.Data(), formula, momMin, momMax);
@@ -375,7 +449,7 @@ struct fitManager
     tf1->SetLineColor(2);
     tf1->Draw("LSAME");
 
-    TString outputFileName = TString("plots/").Append(tf1->GetName()).Append(".eps");
+    TString outputFileName = TString("plots/fitTF1").Append(tf1->GetName()).Append(".eps");
 
     canvas->SaveAs(outputFileName.Data());
     canvas->SaveAs(outputFileName.ReplaceAll(".eps", ".root").Data());
@@ -389,7 +463,7 @@ struct fitManager
 
     TString decayMode_string = getDecayMode_string(decayMode_);
     TString fitParameterName = 
-      Form("%s_%s_%s_%s_%s", name.Data(), momBinName.Data(), dR_->GetName(), decayMode_string.Data(), label_.Data());
+      Form("%s_%s_%s_%s_%s", name.Data(), momBinName.Data(), sep_->GetName(), decayMode_string.Data(), label_.Data());
     RooRealVar* fitParameter = new RooRealVar(fitParameterName.Data(), fitParameterName.Data(), startValue, min, max);
     return fitParameter;
   }
@@ -400,7 +474,7 @@ struct fitManager
 
     TString decayMode_string = getDecayMode_string(decayMode_);
     TString fitParameterName = 
-      Form("%s_%s_%s_%s_%s", name.Data(), momBinName.Data(), dR_->GetName(), decayMode_string.Data(), label_.Data());
+      Form("%s_%s_%s_%s_%s", name.Data(), momBinName.Data(), sep_->GetName(), decayMode_string.Data(), label_.Data());
     RooConstVar* fitParameter = new RooConstVar(fitParameterName.Data(), fitParameterName.Data(), value);
     return fitParameter;
   }
@@ -408,6 +482,21 @@ struct fitManager
   void printPrefitParameter(const TString& fitParameterName, RooRealVar* fitParameter)
   {
     std::cout << fitParameterName.Data() << ": " << fitParameter->getVal() << " +/- " << fitParameter->getError() << std::endl;
+  }
+
+  void printAllPrefitParameter(int momBin)
+  {
+    printPrefitParameter("gmean", prefitParamGMean_[momBin]);
+    printPrefitParameter("gsigma", prefitParamGSigma_[momBin]);
+    printPrefitParameter("slope", prefitParamSlope_[momBin]);
+    printPrefitParameter("offset", prefitParamOffset_[momBin]);
+    printPrefitParameter("C", prefitParamC_[momBin]);
+    printPrefitParameter("mp1", prefitParamMP1_[momBin]);
+    printPrefitParameter("width1", prefitParamWidth1_[momBin]);
+    printPrefitParameter("mp2", prefitParamMP2_[momBin]);
+    printPrefitParameter("width2", prefitParamWidth2_[momBin]);
+    printPrefitParameter("x0", prefitParamX0_[momBin]);
+    printPrefitParameter("dx1", prefitParamDeltaX1_[momBin]);
   }
 
   void runPrefit(RooRealVar& sepTimesMom,
@@ -452,8 +541,8 @@ struct fitManager
       //if ( histogramMean > 0.15 ) histogramMean = 0.15;
       std::cout << " histogramMean = " << histogramMean << std::endl;
       double histogramMax_x = histogram->GetBinCenter(histogram->GetMaximumBin());
-      double histogramMax_y = histogram->GetBinContent(histogram->GetMaximumBin());
-      double risingEdge_slope = histogramMax_y/histogramMax_x;
+      //double histogramMax_y = histogram->GetBinContent(histogram->GetMaximumBin());
+      //double risingEdge_slope = histogramMax_y/histogramMax_x;
       //if ( histogramMax_x > 0.15 ) histogramMax = 0.15;
       std::cout << " histogramMax_x = " << histogramMax_x << std::endl;
       double errEdgePosRight = 0.;
@@ -465,31 +554,35 @@ struct fitManager
       std::cout << " histogramRMS = " << histogramRMS << std::endl;
       double histogramRMSgtMax = compHistogramRMSgtMax(histogram);
       std::cout << " histogramRMSgtMax = " << histogramRMSgtMax << std::endl;
-            
-      //TString dRscaledName = 
-      //  Form("dRscaled_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), dR_->GetName(), label_.Data());
-      //RooFormulaVar* dRscaled = new RooFormulaVar(dRscaledName.Data(), "@0*@1", RooArgList(*dR_, *mom_));
 
       const double epsilon = 1.e-3;
 
-      RooRealVar* gmean = buildPrefitParameter("gmean", momBinName, histogramMax_x, 0.5*histogramMax_x, 1.5*histogramMax_x);
-      RooRealVar* gsigma = buildPrefitParameter("gsigma", momBinName, histogramRMS, 0.5*histogramRMS, 2.0*histogramRMS);
-      RooRealVar* slope = buildPrefitParameter("slope", momBinName, risingEdge_slope, 0.5*risingEdge_slope, 1.5*risingEdge_slope);
-      RooRealVar* offset = buildPrefitParameter("offset", momBinName, epsilon, 0., +0.1*histogramMax_y);
-      RooRealVar* C = buildPrefitParameter("C", momBinName, 0.25, 0., 1.);
-      RooRealVar* mp = buildPrefitParameter("mp", momBinName, histogramMax_x, 0.8*histogramMax_x, fallingEdge_position);
-      RooRealVar* width = buildPrefitParameter("width", momBinName, 0.04*histogramRMSgtMax, 1.e-3, 2.0*histogramRMSgtMax);
-      RooRealVar* alpha = buildPrefitParameter("alpha", momBinName, 1., 1.e-1, 1.e+1);
+      prefitParamGMean_[iMomBin] = buildPrefitParameter("gmean", momBinName, histogramMax_x, 0.5*histogramMax_x, 1.5*histogramMax_x);
+      prefitParamGSigma_[iMomBin] = buildPrefitParameter("gsigma", momBinName, histogramRMS, 0.5*histogramRMS, 2.0*histogramRMS);
+      double slopeMin = 1.e-2/histogramMax_x;
+      double slopeMax = 1.e+2/histogramMax_x;
+      prefitParamSlope_[iMomBin] = buildPrefitParameter("slope", momBinName, 1./histogramMax_x, slopeMin, slopeMax);
+      //prefitParamOffset_[iMomBin] = buildPrefitParameter("offset", momBinName, 1.e-9, 0., +0.1);
+      prefitParamOffset_[iMomBin] = buildPrefitParameter("offset", momBinName, 0., -1.e-9, +1.e-9);
+      prefitParamOffset_[iMomBin]->setConstant();
+      prefitParamC_[iMomBin] = buildPrefitParameter("C", momBinName, 0.25, 0., 1.);
+      prefitParamMP1_[iMomBin] = buildPrefitParameter("mp1", momBinName, histogramMax_x, 0.8*histogramMax_x, fallingEdge_position);
+      prefitParamWidth1_[iMomBin] = buildPrefitParameter("width1", momBinName, 0.04*histogramRMSgtMax, 1.e-4, 2.0*histogramRMSgtMax);
+      prefitParamMP2_[iMomBin] = buildPrefitParameter("mp2", momBinName, histogramMax_x + 2., fallingEdge_position + 2., 12.);
+      prefitParamWidth2_[iMomBin] = buildPrefitParameter("width2", momBinName, 0.40*histogramRMSgtMax, 1.e-2, 20.*histogramRMSgtMax);
       double x0Min = 0.9*fallingEdge_position - errEdgePosLeft;
       double x0Max = 1.1*fallingEdge_position + errEdgePosRight;
-      RooRealVar* x0 = buildPrefitParameter("x0", momBinName, fallingEdge_position, x0Min, x0Max);
-      //RooRealVar* dx1 = buildPrefitParameter("dx1", momBinName, 3.*histogramRMSgtMax, 0., 12.);
-      RooRealVar* dx1 = buildPrefitParameter("dx1", momBinName, 12. - epsilon, 0., 12.);
+      prefitParamX0_[iMomBin] = buildPrefitParameter("x0", momBinName, fallingEdge_position, x0Min, x0Max);
+      prefitParamDeltaX1_[iMomBin] = buildPrefitParameter("dx1", momBinName, 12. - epsilon, 0., 12.);
 
-      TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), dR_->GetName(), label_.Data());
+      TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), sep_->GetName(), label_.Data());
       prefitModel_[iMomBin] = 
 	new TauDecayKinePdf(modelName.Data(), modelName.Data(), 
-			    sepTimesMom, *gmean, *gsigma, *slope, *offset, *C, *mp, *width, *alpha, *x0, *dx1);
+			    sepTimesMom, *prefitParamGMean_[iMomBin], *prefitParamGSigma_[iMomBin],
+			    *prefitParamSlope_[iMomBin], *prefitParamOffset_[iMomBin], *prefitParamC_[iMomBin],
+			    *prefitParamMP1_[iMomBin], *prefitParamWidth1_[iMomBin], 
+			    *prefitParamMP2_[iMomBin], *prefitParamWidth2_[iMomBin], 
+			    *prefitParamX0_[iMomBin], *prefitParamDeltaX1_[iMomBin]);
 
       RooConstVar* gmeanConstraint_value = 
         new RooConstVar("gmeanConstraint_value", "gmeanConstraint_value", histogramMax_x);
@@ -497,140 +590,204 @@ struct fitManager
         new RooConstVar("gmeanConstraint_sigma", "gmeanConstraint_sigma", 0.25*histogramMax_x);
       RooGaussian* gmeanConstraint_pdf =
         new RooGaussian("gmeanConstraint_pdf", "gmeanConstraint_pdf",
-			*gmean, *gmeanConstraint_value, *gmeanConstraint_sigma);
+			*prefitParamGMean_[iMomBin], *gmeanConstraint_value, *gmeanConstraint_sigma);
+
+      RooConstVar* slopeConstraint_value = 
+        new RooConstVar("slopeConstraint_value", "slopeConstraint_value", 1./histogramMax_x);
+      RooConstVar* slopeConstraint_sigma =
+        new RooConstVar("slopeConstraint_sigma", "slopeConstraint_sigma", 10./histogramMax_x);
+      RooGaussian* slopeConstraint_pdf =
+        new RooGaussian("slopeConstraint_pdf", "slopeConstraint_pdf",
+			*prefitParamSlope_[iMomBin], *slopeConstraint_value, *slopeConstraint_sigma);
+
       RooConstVar* x0Constraint_value =
         new RooConstVar("x0Constraint_value", "x0Constraint_value", histogramMax_x);
       RooConstVar* x0Constraint_sigma =
         new RooConstVar("x0Constraint_sigma", "x0Constraint_sigma", 0.5*histogramMax_x);
       RooGaussian* x0Constraint_pdf =
         new RooGaussian("x0Constraint_pdf", "x0Constraint_pdf",
-			*x0, *x0Constraint_value, *x0Constraint_sigma);
+			*prefitParamX0_[iMomBin], *x0Constraint_value, *x0Constraint_sigma);
+
       RooConstVar* dx1Constraint_value =
         new RooConstVar("dx1Constraint_value", "dx1Constraint_value", 12.);
       RooConstVar* dx1Constraint_sigma =
         new RooConstVar("dx1Constraint_sigma", "dx1Constraint_sigma", 12.);
       RooGaussian* dx1Constraint_pdf =
         new RooGaussian("dx1Constraint_pdf", "dx1Constraint_pdf",
-			*dx1, *dx1Constraint_value, *dx1Constraint_sigma);
+			*prefitParamDeltaX1_[iMomBin], *dx1Constraint_value, *dx1Constraint_sigma);
       
+      RooArgSet prefitParamConstraints(*gmeanConstraint_pdf, *slopeConstraint_pdf, *x0Constraint_pdf, *dx1Constraint_pdf);
+
       RooLinkedList options;
       options.Add(new RooCmdArg(RooFit::Save(true)));
       options.Add(new RooCmdArg(RooFit::SumW2Error(true)));
-      //options.Add(new RooCmdArg(RooFit::PrintLevel(-1)));
-      //options.Add(new RooCmdArg(RooFit::PrintEvalErrors(-1)));
-      //options.Add(new RooCmdArg(RooFit::Warnings(-1)));
-      options.Add(new RooCmdArg(RooFit::ExternalConstraints(RooArgSet(*gmeanConstraint_pdf, *x0Constraint_pdf, *dx1Constraint_pdf))));
+      options.Add(new RooCmdArg(RooFit::PrintLevel(-1)));
+      options.Add(new RooCmdArg(RooFit::PrintEvalErrors(-1)));
+      options.Add(new RooCmdArg(RooFit::Warnings(-1)));
+      options.Add(new RooCmdArg(RooFit::ExternalConstraints(prefitParamConstraints)));
 
 //--- perform stand-alone fit of Gaussian/ExpGamma distribution
       std::cout << "--> fitting Gaussian/ExpGamma distribution..." << std::endl;
       RooLinkedList options_gaussian(options);
       sepTimesMom.setRange("gaussian", 0., fallingEdge_position);
       options_gaussian.Add(new RooCmdArg(RooFit::Range("gaussian")));
-      gmean->setConstant(false);
-      gsigma->setConstant(false);
-      slope->setConstant(false);
-      offset->setConstant(false);
-      C->setConstant(false);
-      mp->setConstant(true);
-      width->setConstant(true);
-      alpha->setConstant(true);
-      x0->setConstant(true);
-      dx1->setConstant(true);
+      prefitParamGMean_[iMomBin]->setConstant(false);
+      prefitParamGSigma_[iMomBin]->setConstant(false);
+      prefitParamSlope_[iMomBin]->setConstant(false);
+      //prefitParamOffset_[iMomBin]->setConstant(false);
+      prefitParamC_[iMomBin]->setConstant(false);
+      prefitParamMP1_[iMomBin]->setConstant(true);
+      prefitParamWidth1_[iMomBin]->setConstant(true);
+      prefitParamMP2_[iMomBin]->setConstant(true);
+      prefitParamWidth2_[iMomBin]->setConstant(true);
+      prefitParamX0_[iMomBin]->setConstant(true);
+      prefitParamDeltaX1_[iMomBin]->setConstant(true);
       RooFitResult* prefitResult_gaussian = prefitModel_[iMomBin]->fitTo(*datahist, options_gaussian);
       delete prefitResult_gaussian;
 
-      printPrefitParameter("gmean", gmean);
-      printPrefitParameter("gsigma", gsigma);
-      printPrefitParameter("slope", slope);
-      printPrefitParameter("offset", offset);
-      printPrefitParameter("C", C);
-      printPrefitParameter("mp", mp);
-      printPrefitParameter("width", width);
-      printPrefitParameter("alpha", alpha);
-      printPrefitParameter("x0", x0);
-      printPrefitParameter("dx1", dx1);
+      printAllPrefitParameter(iMomBin);
 
 //--- perform stand-alone fit of Landau distribution
       std::cout << "--> fitting Landau distribution..." << std::endl;
       RooLinkedList options_landau(options);
-      sepTimesMom.setRange("landau", 0.5*(histogramMax_x + fallingEdge_position), 12.);
+      int iBin0 = histogram->FindBin(0.5*(histogramMax_x + fallingEdge_position));
+      const int numBinsRef = 5;
+      int iBinRef = histogram->FindBin(fallingEdge_position) + numBinsRef;
+      std::cout << "iBinRef = " << iBinRef << ": position = " << histogram->GetBinCenter(iBinRef) << std::endl;
+      sepTimesMom.setRange("landau", histogram->GetBinCenter(iBin0), histogram->GetBinCenter(iBinRef));
       options_landau.Add(new RooCmdArg(RooFit::Range("landau")));
-      gmean->setConstant(true);
-      gsigma->setConstant(true);
-      slope->setConstant(true);
-      offset->setConstant(true);
-      C->setConstant(true);
-      mp->setConstant(false);
-      width->setConstant(false);
-      alpha->setConstant(true);
-      x0->setConstant(true);
-      dx1->setConstant(true);
+      prefitParamGMean_[iMomBin]->setConstant(true);
+      prefitParamGSigma_[iMomBin]->setConstant(true);
+      prefitParamSlope_[iMomBin]->setConstant(true);
+      //prefitParamOffset_[iMomBin]->setConstant(true);
+      prefitParamC_[iMomBin]->setConstant(true);
+      prefitParamMP1_[iMomBin]->setConstant(false);
+      prefitParamWidth1_[iMomBin]->setConstant(false);
+      prefitParamMP2_[iMomBin]->setConstant(true);
+      prefitParamWidth2_[iMomBin]->setConstant(true);
+      prefitParamX0_[iMomBin]->setConstant(true);
+      prefitParamDeltaX1_[iMomBin]->setConstant(true);
       RooFitResult* prefitResult_landau = prefitModel_[iMomBin]->fitTo(*datahist, options_landau);
+//--- CV: return value of RooFitResult::minNll is unreliable,
+//        because it may change by large amount in case Hesse matrix has negative diagonal elements
+//       --> call dedicated function in order to compute FCN value a-la Minuit
+      double refFCN = compFCN(histogram, iBin0, iBinRef, 0.5*(momMax + momMin), 
+			      prefitParamMP1_[iMomBin]->getVal(), prefitParamWidth1_[iMomBin]->getVal());
+      //std::cout << "refFCN = " << refFCN << std::endl;
+      double refFCNperDoF = refFCN/((iBinRef - iBin0) + 1 - 2);
+      //std::cout << "refFCNperDoF = " << refFCNperDoF << std::endl;
       delete prefitResult_landau;
+      int iBin1 = histogram->GetNbinsX();
+      //std::cout << "iBin1 = " << iBin1 << ": position = " << histogram->GetBinCenter(iBin1) << std::endl;
+      int dBin = TMath::CeilNint(0.5*(histogram->GetNbinsX() - iBin0));
+      //std::cout << "dBin = " << dBin << std::endl;
+      double FCNperDoF = 0.;
+      do {	
+	sepTimesMom.setRange("landau", histogram->GetBinCenter(iBin0), histogram->GetBinCenter(iBin1));
+	RooFitResult* prefitResult_landau = prefitModel_[iMomBin]->fitTo(*datahist, options_landau);
+	double FCN = compFCN(histogram, iBin0, iBin1, 0.5*(momMax + momMin),
+			     prefitParamMP1_[iMomBin]->getVal(), prefitParamWidth1_[iMomBin]->getVal());
+	//std::cout << "FCN = " << FCN << std::endl;
+	FCNperDoF = FCN/((iBin1 - iBin0) + 1 - 2);
+	//std::cout << "FCNperDoF = " << FCNperDoF << std::endl;
+	delete prefitResult_landau;	
+	if ( FCNperDoF > (2.*refFCNperDoF) ) iBin1 = TMath::Max(iBinRef, iBin1 - dBin);
+	else iBin1 = TMath::Min(histogram->GetNbinsX(), iBin1 + dBin);
+	//std::cout << "iBin1 = " << iBin1 << ": position = " << histogram->GetBinCenter(iBin1) << std::endl;
+	dBin = TMath::CeilNint(0.5*dBin);
+	//std::cout << "dBin = " << dBin << std::endl;
+      } while ( dBin > 1 );
 
-      printPrefitParameter("gmean", gmean);
-      printPrefitParameter("gsigma", gsigma);
-      printPrefitParameter("slope", slope);
-      printPrefitParameter("offset", offset);
-      printPrefitParameter("C", C);
-      printPrefitParameter("mp", mp);
-      printPrefitParameter("width", width);
-      printPrefitParameter("alpha", alpha);
-      printPrefitParameter("x0", x0);
-      printPrefitParameter("dx1", dx1);
+      if ( FCNperDoF > (2.*refFCNperDoF) ) iBin1 = TMath::Max(iBinRef, iBin1 - dBin);
+      iBin1 -= 1; // CV: "phenomenological" correction...
+
+      printAllPrefitParameter(iMomBin);
+      
+      double x1 = histogram->GetBinCenter(iBin1);
+      if ( iBin1 > (histogram->GetNbinsX() - 5) ) x1 = 12.;
+      std::cout << "x1 = " << x1 << std::endl;
+
+      setRealVar_Value_Range(prefitParamMP2_[iMomBin], 0.8*x1, 0.6*x1, x1);
+      double dx1Min = histogram->GetBinCenter(iBin1 - 2);
+      double dx1Max = histogram->GetBinCenter(iBin1 + 2);
+      if ( dx1Max > 12. ) dx1Max = 12.;
+      setRealVar_Value_Range(prefitParamDeltaX1_[iMomBin], x1 - fallingEdge_position, dx1Min, dx1Max);
+
+//--- perform stand-alone fit of 'Exponential' distribution
+      if ( x1 < 12. ) {
+	std::cout << "--> fitting 'Exponential' distribution..." << std::endl;
+	RooLinkedList options_exponential(options);
+	sepTimesMom.setRange("exponential", x1, 12.);
+	options_landau.Add(new RooCmdArg(RooFit::Range("exponential")));
+	prefitParamGMean_[iMomBin]->setConstant(true);
+	prefitParamGSigma_[iMomBin]->setConstant(true);
+	prefitParamSlope_[iMomBin]->setConstant(true);
+	//prefitParamOffset_[iMomBin]->setConstant(true);
+	prefitParamC_[iMomBin]->setConstant(true);
+	prefitParamMP1_[iMomBin]->setConstant(true);
+	prefitParamWidth1_[iMomBin]->setConstant(true);
+	prefitParamMP2_[iMomBin]->setConstant(false);
+	prefitParamWidth2_[iMomBin]->setConstant(false);
+	prefitParamX0_[iMomBin]->setConstant(true);
+	prefitParamDeltaX1_[iMomBin]->setConstant(true);
+	RooFitResult* prefitResult_exponential = prefitModel_[iMomBin]->fitTo(*datahist, options_exponential);
+	delete prefitResult_exponential;
+	
+	printAllPrefitParameter(iMomBin);
+      } else {
+	std::cout << "--> skipping fit of 'Exponential' distribution..." << std::endl;
+      }
 
 //--- start combined fit of Gaussian/ExpGamma + Landau + Exponential model
       std::cout << "--> starting combined fit of Gaussian/ExpGamma + Landau + Exponential model..." << std::endl;
       RooLinkedList options_combined(options);
       sepTimesMom.setRange("combined", 0., 12.);
       options_combined.Add(new RooCmdArg(RooFit::Range("combined")));
-      gmean->setConstant(false);
-      gsigma->setConstant(false);
-      slope->setConstant(false);
-      offset->setConstant(false);
-      C->setConstant(false);
-      mp->setConstant(false);
-      width->setConstant(false);
-      alpha->setConstant(false);
-      x0->setConstant(false);
-      dx1->setConstant(false);
+      prefitParamGMean_[iMomBin]->setConstant(false);
+      prefitParamGSigma_[iMomBin]->setConstant(false);
+      prefitParamSlope_[iMomBin]->setConstant(false);
+      //prefitParamOffset_[iMomBin]->setConstant(false);
+      prefitParamC_[iMomBin]->setConstant(false);
+      prefitParamMP1_[iMomBin]->setConstant(false);
+      prefitParamWidth1_[iMomBin]->setConstant(false);
+      prefitParamMP2_[iMomBin]->setConstant(false);
+      prefitParamWidth2_[iMomBin]->setConstant(false);
+      prefitParamX0_[iMomBin]->setConstant(false);
+      prefitParamDeltaX1_[iMomBin]->setConstant(false);
       RooFitResult* prefitResult = prefitModel_[iMomBin]->fitTo(*datahist, options_combined);
       std::cout << " prefit status = " << prefitResult->status() << " (converged = 0)" << std::endl;
       delete prefitResult;
   
-      printPrefitParameter("gmean", gmean);
-      printPrefitParameter("gsigma", gsigma);
-      printPrefitParameter("slope", slope);
-      printPrefitParameter("offset", offset);
-      printPrefitParameter("C", C);
-      printPrefitParameter("mp", mp);
-      printPrefitParameter("width", width);
-      printPrefitParameter("alpha", alpha);
-      printPrefitParameter("x0", x0);
-      printPrefitParameter("dx1", dx1);
+      printAllPrefitParameter(iMomBin);
 
-      //gmean->setVal(2.74104);
-      //gsigma->setVal(1.08494);
-      //slope->setVal(1.);
-      //offset->setVal(0.);
-      //C->setVal(0.99999);
-      //mp->setVal(3.17792);
-      //width->setVal(3.37095e-2);
-      //alpha->setVal(1.);
-      //x0->setVal(3.45);
-      //dx1->setVal(12.);
-/*
-      storePrefitResults(prefitParamLandauMP_[iMomBin], momMin, momMax, prefitResultLandauMP_);
-      storePrefitResults(prefitParamLandauWidth_[iMomBin], momMin, momMax, prefitResultLandauWidth_);
-      storePrefitResults(prefitParamLandauScaleFactor_[iMomBin], momMin, momMax, prefitResultLandauScaleFactor_);
-      storePrefitResults(prefitParamGaussianMean_[iMomBin], momMin, momMax, prefitResultGaussianMean_);
-      storePrefitResults(prefitParamGaussianSigma_[iMomBin], momMin, momMax, prefitResultGaussianSigma_);
-      storePrefitResults(prefitParamMix_[iMomBin], momMin, momMax, prefitResultMix_);
- */         
+      storePrefitResults(prefitParamGMean_[iMomBin], momMin, momMax, prefitResultGMean_);
+      storePrefitResults(prefitParamGSigma_[iMomBin], momMin, momMax, prefitResultGSigma_);
+      storePrefitResults(prefitParamSlope_[iMomBin], momMin, momMax, prefitResultSlope_);
+      storePrefitResults(prefitParamOffset_[iMomBin], momMin, momMax, prefitResultOffset_);
+      storePrefitResults(prefitParamC_[iMomBin], momMin, momMax, prefitResultC_);
+      storePrefitResults(prefitParamMP1_[iMomBin], momMin, momMax, prefitResultMP1_);
+      storePrefitResults(prefitParamWidth1_[iMomBin], momMin, momMax, prefitResultWidth1_);
+      storePrefitResults(prefitParamMP2_[iMomBin], momMin, momMax, prefitResultMP2_);
+      storePrefitResults(prefitParamWidth2_[iMomBin], momMin, momMax, prefitResultWidth2_);
+      storePrefitResults(prefitParamX0_[iMomBin], momMin, momMax, prefitResultX0_);
+      storePrefitResults(prefitParamDeltaX1_[iMomBin], momMin, momMax, prefitResultDeltaX1_);
+
+      prefitParamGMean_[iMomBin]->setVal(2.53134);
+      prefitParamGSigma_[iMomBin]->setVal(0.987887);
+      prefitParamSlope_[iMomBin]->setVal(0.0443694);
+      //prefitParamOffset_[iMomBin]->setVal(0.);
+      prefitParamC_[iMomBin]->setVal(0.184107 );
+      prefitParamMP1_[iMomBin]->setVal(3.34056);
+      prefitParamWidth1_[iMomBin]->setVal(0.000101819);
+      prefitParamMP2_[iMomBin]->setVal(9.6);
+      prefitParamWidth2_[iMomBin]->setVal(0.381397);
+      prefitParamX0_[iMomBin]->setVal(3.55);
+      prefitParamDeltaX1_[iMomBin]->setVal(8.45);
+
       canvas->Clear();
       canvas->SetLogy();
     
-      TString frameTitle = Form("%s %s: P_{T} = %2.0f..%2.0f GeV", dR_->GetName(), decayMode_string.Data(), momMin, momMax);
+      TString frameTitle = Form("%s %s: P_{T} = %2.0f..%2.0f GeV", sep_->GetName(), decayMode_string.Data(), momMin, momMax);
       RooPlot* frame = sepTimesMom.frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(100));
 
       datahist->plotOn(frame);
@@ -667,14 +824,18 @@ struct fitManager
     delete canvas;
 
     delete inputFile;
-/*    
-    fitTF1(momParamLandauMP_, prefitResultLandauMP_, prefitCoeffValLandauMP_, prefitCoeffErrLandauMP_);
-    fitTF1(momParamLandauWidth_, prefitResultLandauWidth_, prefitCoeffValLandauWidth_, prefitCoeffErrLandauWidth_);
-    fitTF1(momParamLandauScaleFactor_, prefitResultLandauScaleFactor_, prefitCoeffValLandauScaleFactor_, prefitCoeffErrLandauScaleFactor_);
-    fitTF1(momParamGaussianMean_, prefitResultGaussianMean_, prefitCoeffValGaussianMean_, prefitCoeffErrGaussianMean_);
-    fitTF1(momParamGaussianSigma_, prefitResultGaussianSigma_, prefitCoeffValGaussianSigma_, prefitCoeffErrGaussianSigma_);
-    fitTF1(momParamMix_, prefitResultMix_, prefitCoeffValMix_, prefitCoeffErrMix_);
- */
+   
+    fitTF1(momParamGMean_, prefitResultGMean_, prefitCoeffValGMean_, prefitCoeffErrGMean_);
+    fitTF1(momParamGSigma_, prefitResultGSigma_, prefitCoeffValGSigma_, prefitCoeffErrGSigma_);
+    fitTF1(momParamSlope_, prefitResultSlope_, prefitCoeffValSlope_, prefitCoeffErrSlope_);
+    fitTF1(momParamOffset_, prefitResultOffset_, prefitCoeffValOffset_, prefitCoeffErrOffset_);
+    fitTF1(momParamC_, prefitResultC_, prefitCoeffValC_, prefitCoeffErrC_);
+    fitTF1(momParamMP1_, prefitResultMP1_, prefitCoeffValMP1_, prefitCoeffErrMP1_);
+    fitTF1(momParamWidth1_, prefitResultWidth1_, prefitCoeffValWidth1_, prefitCoeffErrWidth1_);
+    fitTF1(momParamMP2_, prefitResultMP2_, prefitCoeffValMP2_, prefitCoeffErrMP2_);
+    fitTF1(momParamWidth2_, prefitResultWidth2_, prefitCoeffValWidth2_, prefitCoeffErrWidth2_);
+    fitTF1(momParamX0_, prefitResultX0_, prefitCoeffValX0_, prefitCoeffErrX0_);
+    fitTF1(momParamDeltaX1_, prefitResultDeltaX1_, prefitCoeffValDeltaX1_, prefitCoeffErrDeltaX1_);
   }
 
   RooAbsReal* buildMomDependentFitParameter(const TString& name, std::vector<RooRealVar*>& fitParameterCoefficients, 
@@ -692,7 +853,7 @@ struct fitManager
 
     for ( unsigned iCoeff = 0; iCoeff < numCoefficients; ++iCoeff ) {
       TString fitParameterCoeffName = 
-	Form("%s_%s_%s_%s_%s_p%u", name.Data(), mom_->GetName(), dR_->GetName(), decayMode_string.Data(), label_.Data(), iCoeff);
+	Form("%s_%s_%s_%s_%s_p%u", name.Data(), mom_->GetName(), sep_->GetName(), decayMode_string.Data(), label_.Data(), iCoeff);
       std::cout << "--> creating fitParameterCoeff: name = " << fitParameterCoeffName.Data() << "," 
 		<< " startValue = " << prefitParamCoeffValues[iCoeff] << " +/- " << prefitParamCoeffErrors[iCoeff] << std::endl;
       RooRealVar* fitParameterCoeff = 
@@ -704,8 +865,8 @@ struct fitManager
     dependents.Add(mom_);
   
     TString fitParameterName = 
-      Form("%s_%s_%s_%s_%s", name.Data(), mom_->GetName(), dR_->GetName(), decayMode_string.Data(), label_.Data());
-    TString fitParameterFormula = ( isMix ) ? momParametrizationMix_forRooFit_ : momParametrization_forRooFit_;
+      Form("%s_%s_%s_%s_%s", name.Data(), mom_->GetName(), sep_->GetName(), decayMode_string.Data(), label_.Data());
+    TString fitParameterFormula = ( isMix ) ? momParametrizationC_forRooFit_ : momParametrization_forRooFit_;
     std::cout << "--> creating momentum-dependent fitParameter: name = " << fitParameterName.Data() << ","
 	      << " formula = " << fitParameterFormula.Data() << std::endl;
     RooAbsReal* fitParameter = new RooFormulaVar(fitParameterName.Data(), fitParameterFormula.Data(), RooArgList(dependents));
@@ -713,58 +874,35 @@ struct fitManager
     return fitParameter;
   }
 
-  void runFit(RooAbsData* dataset, const TString& outputFileName)
+  void runFit(RooRealVar& sepTimesMom,
+	      RooAbsData* dataset, const TString& outputFileName)
   {
     std::cout << "<fitManager::runFit>:" << std::endl;
 
     TString decayMode_string = getDecayMode_string(decayMode_);
   
-    RooDataHist dataset_binned("dataset_binned", "dataset_binned", RooArgSet(*mom_, *dR_), *dataset);
+    RooDataHist dataset_binned("dataset_binned", "dataset_binned", RooArgSet(*mom_, *sep_), *dataset);
 
-    fitParamLandauMP_ = 
-      buildMomDependentFitParameter("LandauMP", fitParamCoeffLandauMP_,
-				    prefitCoeffValLandauMP_, prefitCoeffErrLandauMP_);
-    fitParamLandauWidth_ = 
-      buildMomDependentFitParameter("LandauWidth", fitParamCoeffLandauWidth_,
-				    prefitCoeffValLandauWidth_, prefitCoeffErrLandauWidth_);
-    fitParamLandauScaleFactor_ =
-      buildMomDependentFitParameter("LandauScaleFactor", fitParamCoeffLandauScaleFactor_,
-				    prefitCoeffValLandauScaleFactor_, prefitCoeffErrLandauScaleFactor_);
-    TString LandauScaleName =
-      Form("LandauScale_%s_%s_%s_%s", decayMode_string.Data(), "AllMom", dR_->GetName(), label_.Data());
-    fitLandauScale_ = 
-      new RooFormulaVar(LandauScaleName.Data(), LandauScaleName.Data(), "@0/@1", RooArgSet(*dR_, *fitParamLandauScaleFactor_));
-    TString LandauName =
-      Form("Landau_%s_%s_%s_%s", decayMode_string.Data(), "AllMom", dR_->GetName(), label_.Data());
-    fitLandau_ = 
-      new RooLandau(LandauName.Data(), LandauName.Data(), *fitLandauScale_, 
-		    *fitParamLandauMP_, *fitParamLandauWidth_);
+    fitParamGMean_ = buildMomDependentFitParameter("gmean", fitParamCoeffGMean_, prefitCoeffValGMean_, prefitCoeffErrGMean_);
+    fitParamGSigma_ = buildMomDependentFitParameter("gsigma", fitParamCoeffGSigma_, prefitCoeffValGSigma_, prefitCoeffErrGSigma_);
+    fitParamSlope_ = buildMomDependentFitParameter("slope", fitParamCoeffSlope_, prefitCoeffValSlope_, prefitCoeffErrSlope_);
+    fitParamOffset_ = buildMomDependentFitParameter("offset", fitParamCoeffOffset_, prefitCoeffValOffset_, prefitCoeffErrOffset_);
+    fitParamC_ = buildMomDependentFitParameter("C", fitParamCoeffC_, prefitCoeffValC_, prefitCoeffErrC_, true);
+    fitParamMP1_ = buildMomDependentFitParameter("mp1", fitParamCoeffMP1_, prefitCoeffValMP1_, prefitCoeffErrMP1_);
+    fitParamWidth1_ = buildMomDependentFitParameter("width1", fitParamCoeffWidth1_, prefitCoeffValWidth1_, prefitCoeffErrWidth1_);
+    fitParamMP2_ = buildMomDependentFitParameter("mp2", fitParamCoeffMP2_, prefitCoeffValMP2_, prefitCoeffErrMP2_);
+    fitParamWidth2_ = buildMomDependentFitParameter("width2", fitParamCoeffWidth2_, prefitCoeffValWidth2_, prefitCoeffErrWidth2_);    
+    fitParamX0_ = buildMomDependentFitParameter("x0", fitParamCoeffX0_, prefitCoeffValX0_, prefitCoeffErrX0_);
+    fitParamDeltaX1_ = buildMomDependentFitParameter("dx1", fitParamCoeffDeltaX1_, prefitCoeffValDeltaX1_, prefitCoeffErrDeltaX1_);
     
-    fitParamGaussianMean_ = 
-      buildMomDependentFitParameter("GaussianMean", fitParamCoeffGaussianMean_,
-				    prefitCoeffValGaussianMean_, prefitCoeffErrGaussianMean_);
-    fitParamGaussianSigma_ = 
-      buildMomDependentFitParameter("GaussianSigma", fitParamCoeffGaussianSigma_,
-				    prefitCoeffValGaussianSigma_, prefitCoeffErrGaussianSigma_);
-    TString GaussianName = 
-      Form("Gaussian_%s_%s_%s_%s", decayMode_string.Data(), "AllMom", dR_->GetName(), label_.Data());
-    fitGaussian_ =
-      new RooGaussian(GaussianName.Data(), GaussianName.Data(), *dR_,
-		      *fitParamGaussianMean_, *fitParamGaussianSigma_);
-    
-    fitParamMix_ = 
-      buildMomDependentFitParameter("mix", fitParamCoeffMix_,
-				    prefitCoeffValMix_, prefitCoeffErrMix_, true);
-			
-    TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), "AllMom", dR_->GetName(), label_.Data());
+    TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), "AllMom", sep_->GetName(), label_.Data());
     fitModel_ = 
-      new RooAddPdf(modelName.Data(), modelName.Data(), 
-		    *fitLandau_, *fitGaussian_, *fitParamMix_);
+      new TauDecayKinePdf(modelName.Data(), modelName.Data(), 
+			  sepTimesMom, *fitParamGMean_, *fitParamGSigma_, *fitParamSlope_, *fitParamOffset_, *fitParamC_,
+			  *fitParamMP1_, *fitParamWidth1_, *fitParamMP2_, *fitParamWidth2_, *fitParamX0_, *fitParamDeltaX1_);
   
     std::cout << "--> estimate PDF timing..." << std::endl;
-    pdfTimingTest(fitLandau_, mom_, dR_);
-    pdfTimingTest(fitGaussian_, mom_, dR_);
-    pdfTimingTest(fitModel_, mom_, dR_);
+    pdfTimingTest(fitModel_, mom_, sep_);
     std::cout << " done." << std::endl;
     
     RooLinkedList options;
@@ -794,12 +932,17 @@ struct fitManager
 
     std::cout << "--> making control plots..." << std::endl;
     
-    storeFitResults(fitParamCoeffLandauMP_, fitCoeffValLandauMP_, fitCoeffErrLandauMP_);
-    storeFitResults(fitParamCoeffLandauWidth_, fitCoeffValLandauWidth_, fitCoeffErrLandauWidth_);
-    storeFitResults(fitParamCoeffLandauScaleFactor_, fitCoeffValLandauScaleFactor_, fitCoeffErrLandauScaleFactor_);
-    storeFitResults(fitParamCoeffGaussianMean_, fitCoeffValGaussianMean_, fitCoeffErrGaussianMean_);
-    storeFitResults(fitParamCoeffGaussianSigma_, fitCoeffValGaussianSigma_, fitCoeffErrGaussianSigma_);
-    storeFitResults(fitParamCoeffMix_, fitCoeffValMix_, fitCoeffErrMix_); 
+    storeFitResults(fitParamCoeffGMean_, fitCoeffValGMean_, fitCoeffErrGMean_);
+    storeFitResults(fitParamCoeffGSigma_, fitCoeffValGSigma_, fitCoeffErrGSigma_);
+    storeFitResults(fitParamCoeffSlope_, fitCoeffValSlope_, fitCoeffErrSlope_);
+    storeFitResults(fitParamCoeffOffset_, fitCoeffValOffset_, fitCoeffErrOffset_);
+    storeFitResults(fitParamCoeffC_, fitCoeffValC_, fitCoeffErrC_);
+    storeFitResults(fitParamCoeffMP1_, fitCoeffValMP1_, fitCoeffErrMP1_);
+    storeFitResults(fitParamCoeffWidth1_, fitCoeffValWidth1_, fitCoeffErrWidth1_);
+    storeFitResults(fitParamCoeffMP2_, fitCoeffValMP2_, fitCoeffErrMP2_);
+    storeFitResults(fitParamCoeffWidth2_, fitCoeffValWidth2_, fitCoeffErrWidth2_);
+    storeFitResults(fitParamCoeffX0_, fitCoeffValX0_, fitCoeffErrX0_);
+    storeFitResults(fitParamCoeffDeltaX1_, fitCoeffValDeltaX1_, fitCoeffErrDeltaX1_);
     
     TCanvas* canvas = new TCanvas("canvas", "canvas", 1, 1, 600, 900);
     canvas->SetFillColor(10);
@@ -817,8 +960,8 @@ struct fitManager
       TVirtualPad* pad = canvas->cd((iMomBin % 6) + 1);
       pad->SetLogy();
 
-      TString frameTitle = Form("%s %s: P_{T} = %2.0f..%2.0f GeV", dR_->GetName(), decayMode_string.Data(), momMin, momMax);
-      RooPlot* frame = dR_->frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(100));
+      TString frameTitle = Form("%s %s: P_{T} = %2.0f..%2.0f GeV", sep_->GetName(), decayMode_string.Data(), momMin, momMax);
+      RooPlot* frame = sep_->frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(100));
       
       TString momSliceName = Form("momSlice%2.0fto%2.0f", momMin, momMax);
       std::stringstream momSliceCut;
@@ -827,34 +970,26 @@ struct fitManager
       RooAbsData* momSliceDataset = dataset->reduce(momSliceCut.str().data());
       std::cout << "Selected " << momSliceDataset->numEntries() << " TTree entries" 
 		<< " in slice " << Form("mom = %2.0f..%2.0f GeV", momMin, momMax) << "..." << std::endl;
-      RooDataHist momSliceDataset_binned("momSliceDataset_binned", "momSliceDataset_binned", RooArgSet(*mom_, *dR_), *momSliceDataset);
+      RooDataHist momSliceDataset_binned("momSliceDataset_binned", "momSliceDataset_binned", RooArgSet(*mom_, *sep_), *momSliceDataset);
       momSliceDataset_binned.plotOn(frame);
      
       fitModel_->plotOn(frame, RooFit::ProjWData(RooArgSet(*mom_), momSliceDataset_binned));
-      fitModel_->plotOn(frame, RooFit::Components(*fitLandau_), RooFit::LineStyle(kDashed));
-      fitModel_->plotOn(frame, RooFit::Components(*fitGaussian_), RooFit::LineStyle(kDashDotted));
 
       frame->Draw();
 
       TLegend legend(0.70, 0.72, 0.89, 0.89, "", "brNDC");
       legend.SetBorderSize(0);
       legend.SetFillColor(0);
-      TObject* graphLandau = 0;
-      TObject* graphGaussian      = 0;
-      TObject* graphSum           = 0;
-      TObject* graphData          = 0;
+      TObject* graphModel = 0;
+      TObject* graphData  = 0;
       for ( int iItem = 0; iItem < frame->numItems(); ++iItem ) {
 	TString itemName = frame->nameOf(iItem);
 	TObject* item = frame->findObject(itemName.Data());
-	if      ( itemName.Contains("Landau")   ) graphLandau = item;
-	else if ( itemName.Contains("Gaussian") ) graphGaussian      = item;
-	else if ( itemName.Contains("pdf")      ) graphSum           = item;
-	else if ( itemName.Contains("datahist") ) graphData          = item; 
+	if      ( itemName.Contains("pdf")      ) graphModel = item;
+	else if ( itemName.Contains("datahist") ) graphData  = item; 
       }
-      if ( graphLandau   != 0 ) legend.AddEntry(graphLandau,   "Landau",   "l");
-      if ( graphGaussian != 0 ) legend.AddEntry(graphGaussian, "Gaussian", "l");
-      if ( graphSum      != 0 ) legend.AddEntry(graphSum,      "Sum",      "l");
-      if ( graphData     != 0 ) legend.AddEntry(graphData,     "TAUOLA",   "p");
+      if ( graphModel != 0 ) legend.AddEntry(graphModel, "Fit",    "l");
+      if ( graphData  != 0 ) legend.AddEntry(graphData,  "TAUOLA", "p");
       legend.Draw();
 
       if ( (iMomBin % 6) == 5 ) {
@@ -875,12 +1010,17 @@ struct fitManager
     std::cout << "<fitManager::writeFitResults>:" << std::endl;
 
     stream << psetName << " = cms.PSet(";
-    writeFitParameter(stream, "LandauMP", momParametrization_forTFormula_, fitCoeffValLandauMP_);
-    writeFitParameter(stream, "LandauWidth", momParametrization_forTFormula_, fitCoeffValLandauWidth_);
-    writeFitParameter(stream, "LandauScaleFactor", momParametrization_forTFormula_, fitCoeffValLandauScaleFactor_);
-    writeFitParameter(stream, "GaussianMean", momParametrization_forTFormula_, fitCoeffValGaussianMean_);
-    writeFitParameter(stream, "GaussianSigma", momParametrization_forTFormula_, fitCoeffValGaussianSigma_);
-    writeFitParameter(stream, "mix", momParametrizationMix_forTFormula_, fitCoeffValMix_);
+    writeFitParameter(stream, "gmean", momParametrization_forTFormula_, fitCoeffValGMean_);
+    writeFitParameter(stream, "gsigma", momParametrization_forTFormula_, fitCoeffValGSigma_);
+    writeFitParameter(stream, "slope", momParametrization_forTFormula_, fitCoeffValSlope_);
+    writeFitParameter(stream, "offset", momParametrization_forTFormula_, fitCoeffValOffset_);
+    writeFitParameter(stream, "C", momParametrizationC_forTFormula_, fitCoeffValC_);
+    writeFitParameter(stream, "mp1", momParametrization_forTFormula_, fitCoeffValMP1_);
+    writeFitParameter(stream, "width1", momParametrization_forTFormula_, fitCoeffValWidth1_);
+    writeFitParameter(stream, "mp2", momParametrization_forTFormula_, fitCoeffValMP2_);
+    writeFitParameter(stream, "width2", momParametrization_forTFormula_, fitCoeffValWidth2_);
+    writeFitParameter(stream, "x0", momParametrization_forTFormula_, fitCoeffValX0_);
+    writeFitParameter(stream, "dx1", momParametrization_forTFormula_, fitCoeffValDeltaX1_);
     stream << ")" << std::endl;
   }
 
@@ -901,84 +1041,122 @@ struct fitManager
   } 
 
   RooRealVar* mom_;
-  RooRealVar* dR_;
+  RooRealVar* sep_;
   int decayMode_;
   TString label_;
   TArrayD momBinning_;
 
-  std::vector<RooRealVar*> prefitParamLandauMP_;
-  std::vector<RooRealVar*> prefitParamLandauWidth_;
-  std::vector<RooRealVar*> prefitParamLandauScaleFactor_;
-  std::vector<RooFormulaVar*> prefitLandauScale_;
-  std::vector<RooAbsPdf*> prefitLandau_;
-  std::vector<RooRealVar*> prefitParamGaussianMean_;
-  std::vector<RooRealVar*> prefitParamGaussianSigma_;
-  std::vector<RooAbsPdf*> prefitGaussian_;
-  std::vector<RooRealVar*> prefitParamMix_;
+  std::vector<RooRealVar*> prefitParamGMean_;
+  std::vector<RooRealVar*> prefitParamGSigma_;
+  std::vector<RooRealVar*> prefitParamSlope_;
+  std::vector<RooRealVar*> prefitParamOffset_;
+  std::vector<RooRealVar*> prefitParamC_;
+  std::vector<RooRealVar*> prefitParamMP1_;
+  std::vector<RooRealVar*> prefitParamWidth1_;
+  std::vector<RooRealVar*> prefitParamMP2_;
+  std::vector<RooRealVar*> prefitParamWidth2_;
+  std::vector<RooRealVar*> prefitParamX0_;
+  std::vector<RooRealVar*> prefitParamDeltaX1_;
   std::vector<RooAbsPdf*> prefitModel_;
 
-  TGraphErrors* prefitResultLandauMP_;
-  TGraphErrors* prefitResultLandauWidth_;
-  TGraphErrors* prefitResultLandauScaleFactor_;
-  TGraphErrors* prefitResultGaussianMean_;
-  TGraphErrors* prefitResultGaussianSigma_;
-  TGraphErrors* prefitResultMix_;
+  TGraphErrors* prefitResultGMean_;
+  TGraphErrors* prefitResultGSigma_;
+  TGraphErrors* prefitResultSlope_;
+  TGraphErrors* prefitResultOffset_;
+  TGraphErrors* prefitResultC_;
+  TGraphErrors* prefitResultMP1_;
+  TGraphErrors* prefitResultWidth1_;
+  TGraphErrors* prefitResultMP2_;
+  TGraphErrors* prefitResultWidth2_;
+  TGraphErrors* prefitResultX0_;
+  TGraphErrors* prefitResultDeltaX1_;
 
   TString momParametrization_forTFormula_;
-  TString momParametrizationMix_forTFormula_;
+  TString momParametrizationC_forTFormula_;
   TString momParametrization_forRooFit_;
-  TString momParametrizationMix_forRooFit_;
+  TString momParametrizationC_forRooFit_;
 
-  TF1* momParamLandauMP_;
-  TF1* momParamLandauWidth_;
-  TF1* momParamLandauScaleFactor_;
-  TF1* momParamGaussianMean_;
-  TF1* momParamGaussianSigma_;
-  TF1* momParamMix_;
+  TF1* momParamGMean_;
+  TF1* momParamGSigma_;
+  TF1* momParamSlope_;
+  TF1* momParamOffset_;
+  TF1* momParamC_;
+  TF1* momParamMP1_;
+  TF1* momParamWidth1_;
+  TF1* momParamMP2_;
+  TF1* momParamWidth2_;
+  TF1* momParamX0_;
+  TF1* momParamDeltaX1_;
 
-  std::vector<double> prefitCoeffValLandauMP_;
-  std::vector<double> prefitCoeffErrLandauMP_;
-  std::vector<double> prefitCoeffValLandauWidth_;
-  std::vector<double> prefitCoeffErrLandauWidth_;
-  std::vector<double> prefitCoeffValLandauScaleFactor_;
-  std::vector<double> prefitCoeffErrLandauScaleFactor_;
-  std::vector<double> prefitCoeffValGaussianMean_;
-  std::vector<double> prefitCoeffErrGaussianMean_;
-  std::vector<double> prefitCoeffValGaussianSigma_;
-  std::vector<double> prefitCoeffErrGaussianSigma_;
-  std::vector<double> prefitCoeffValMix_;
-  std::vector<double> prefitCoeffErrMix_;
-
+  std::vector<double> prefitCoeffValGMean_;
+  std::vector<double> prefitCoeffErrGMean_;
+  std::vector<double> prefitCoeffValGSigma_;
+  std::vector<double> prefitCoeffErrGSigma_;
+  std::vector<double> prefitCoeffValSlope_;
+  std::vector<double> prefitCoeffErrSlope_;
+  std::vector<double> prefitCoeffValOffset_;
+  std::vector<double> prefitCoeffErrOffset_;
+  std::vector<double> prefitCoeffValC_;
+  std::vector<double> prefitCoeffErrC_;
+  std::vector<double> prefitCoeffValMP1_;
+  std::vector<double> prefitCoeffErrMP1_;
+  std::vector<double> prefitCoeffValWidth1_;
+  std::vector<double> prefitCoeffErrWidth1_;
+  std::vector<double> prefitCoeffValMP2_;
+  std::vector<double> prefitCoeffErrMP2_;
+  std::vector<double> prefitCoeffValWidth2_;
+  std::vector<double> prefitCoeffErrWidth2_;
+  std::vector<double> prefitCoeffValX0_;
+  std::vector<double> prefitCoeffErrX0_;
+  std::vector<double> prefitCoeffValDeltaX1_;
+  std::vector<double> prefitCoeffErrDeltaX1_;
   
-  std::vector<RooRealVar*> fitParamCoeffLandauMP_;
-  RooAbsReal* fitParamLandauMP_;
-  std::vector<RooRealVar*> fitParamCoeffLandauWidth_;
-  RooAbsReal* fitParamLandauWidth_;
-  std::vector<RooRealVar*> fitParamCoeffLandauScaleFactor_;
-  RooAbsReal* fitParamLandauScaleFactor_;
-  RooFormulaVar* fitLandauScale_;
-  RooAbsPdf* fitLandau_;
-  std::vector<RooRealVar*> fitParamCoeffGaussianMean_;
-  RooAbsReal* fitParamGaussianMean_;
-  std::vector<RooRealVar*> fitParamCoeffGaussianSigma_;
-  RooAbsReal* fitParamGaussianSigma_;
-  RooAbsPdf* fitGaussian_;
-  std::vector<RooRealVar*> fitParamCoeffMix_;
-  RooAbsReal*  fitParamMix_;
+  std::vector<RooRealVar*> fitParamCoeffGMean_;
+  RooAbsReal* fitParamGMean_;
+  std::vector<RooRealVar*> fitParamCoeffGSigma_;
+  RooAbsReal* fitParamGSigma_;
+  std::vector<RooRealVar*> fitParamCoeffSlope_;
+  RooAbsReal* fitParamSlope_;
+  std::vector<RooRealVar*> fitParamCoeffOffset_;
+  RooAbsReal* fitParamOffset_;
+  std::vector<RooRealVar*> fitParamCoeffC_;
+  RooAbsReal* fitParamC_;
+  std::vector<RooRealVar*> fitParamCoeffMP1_;
+  RooAbsReal* fitParamMP1_;
+  std::vector<RooRealVar*> fitParamCoeffWidth1_;
+  RooAbsReal* fitParamWidth1_;
+  std::vector<RooRealVar*> fitParamCoeffMP2_;
+  RooAbsReal* fitParamMP2_;
+  std::vector<RooRealVar*> fitParamCoeffWidth2_;
+  RooAbsReal* fitParamWidth2_;
+  std::vector<RooRealVar*> fitParamCoeffX0_;
+  RooAbsReal* fitParamX0_;
+  std::vector<RooRealVar*> fitParamCoeffDeltaX1_;
+  RooAbsReal* fitParamDeltaX1_;
   RooAbsPdf* fitModel_;
 
-  std::vector<double> fitCoeffValLandauMP_;
-  std::vector<double> fitCoeffErrLandauMP_;
-  std::vector<double> fitCoeffValLandauWidth_;
-  std::vector<double> fitCoeffErrLandauWidth_;
-  std::vector<double> fitCoeffValLandauScaleFactor_;
-  std::vector<double> fitCoeffErrLandauScaleFactor_;
-  std::vector<double> fitCoeffValGaussianMean_;
-  std::vector<double> fitCoeffErrGaussianMean_;
-  std::vector<double> fitCoeffValGaussianSigma_;
-  std::vector<double> fitCoeffErrGaussianSigma_;
-  std::vector<double> fitCoeffValMix_;
-  std::vector<double> fitCoeffErrMix_;
+  std::vector<double> fitCoeffValGMean_;
+  std::vector<double> fitCoeffErrGMean_;
+  std::vector<double> fitCoeffValGSigma_;
+  std::vector<double> fitCoeffErrGSigma_;
+  std::vector<double> fitCoeffValSlope_;
+  std::vector<double> fitCoeffErrSlope_;
+  std::vector<double> fitCoeffValOffset_;
+  std::vector<double> fitCoeffErrOffset_;
+  std::vector<double> fitCoeffValC_;
+  std::vector<double> fitCoeffErrC_;
+  std::vector<double> fitCoeffValMP1_;
+  std::vector<double> fitCoeffErrMP1_;
+  std::vector<double> fitCoeffValWidth1_;
+  std::vector<double> fitCoeffErrWidth1_;
+  std::vector<double> fitCoeffValMP2_;
+  std::vector<double> fitCoeffErrMP2_;
+  std::vector<double> fitCoeffValWidth2_;
+  std::vector<double> fitCoeffErrWidth2_;
+  std::vector<double> fitCoeffValX0_;
+  std::vector<double> fitCoeffErrX0_;
+  std::vector<double> fitCoeffValDeltaX1_;
+  std::vector<double> fitCoeffErrDeltaX1_;
 };
 
 //
@@ -1166,7 +1344,7 @@ int main(int argc, const char* argv[])
       TString outputFileName_leg1_dR_all = Form("plots/fitTauDecayKinePlots_%s_leg1_dR_all.eps", decayMode_string.Data());
       fitManager_leg1_dR_all->runPrefit(sepTimesMom, inputFileName_histograms, 
 					"VisInvisDeltaRLabTimesPt", "all", outputFileName_leg1_dR_all);
-      fitManager_leg1_dR_all->runFit(dataset_leg1_all, outputFileName_leg1_dR_all);
+      fitManager_leg1_dR_all->runFit(sepTimesMom, dataset_leg1_all, outputFileName_leg1_dR_all);
       
       TString fitManagerName_leg1_angle_all = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg1", "angle", "all");
       if ( fitResults.find(fitManagerName_leg1_angle_all.Data()) == fitResults.end() ) {
@@ -1179,7 +1357,7 @@ int main(int argc, const char* argv[])
 	Form("plots/fitTauDecayKinePlots_%s_leg1_angle_all.eps", decayMode_string.Data());
       fitManager_leg1_angle_all->runPrefit(sepTimesMom, inputFileName_histograms, 
 					   "VisInvisAngleLabTimesEnergy", "all", outputFileName_leg1_angle_all);
-      fitManager_leg1_angle_all->runFit(dataset_leg1_all, outputFileName_leg1_angle_all);
+      fitManager_leg1_angle_all->runFit(sepTimesMom, dataset_leg1_all, outputFileName_leg1_angle_all);
     }
 
     /*****************************************************************************
@@ -1199,7 +1377,7 @@ int main(int argc, const char* argv[])
       TString outputFileName_leg1_dR_selected = Form("plots/fitTauDecayKinePlots_%s_leg1_dR_selected.eps", decayMode_string.Data());
       fitManager_leg1_dR_selected->runPrefit(sepTimesMom, inputFileName_histograms, 
 					     "VisInvisDeltaRLabTimesPt", "selected2", outputFileName_leg1_dR_selected);
-      fitManager_leg1_dR_selected->runFit(dataset_leg1_selected, outputFileName_leg1_dR_selected);
+      fitManager_leg1_dR_selected->runFit(sepTimesMom, dataset_leg1_selected, outputFileName_leg1_dR_selected);
       
       TString fitManagerName_leg1_angle_selected = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg1", "angle", "selected");
       if ( fitResults.find(fitManagerName_leg1_angle_selected.Data()) == fitResults.end() ) {
@@ -1212,7 +1390,7 @@ int main(int argc, const char* argv[])
 	Form("plots/fitTauDecayKinePlots_%s_leg1_angle_selected.eps", decayMode_string.Data());
       fitManager_leg1_angle_selected->runPrefit(sepTimesMom, inputFileName_histograms, 
 						"VisInvisAngleLabTimesEnergy", "selected2", outputFileName_leg1_angle_selected);
-      fitManager_leg1_angle_selected->runFit(dataset_leg1_selected, outputFileName_leg1_angle_selected);
+      fitManager_leg1_angle_selected->runFit(sepTimesMom, dataset_leg1_selected, outputFileName_leg1_angle_selected);
     }
 
     /*****************************************************************************
@@ -1232,7 +1410,7 @@ int main(int argc, const char* argv[])
       TString outputFileName_leg2_dR_all = Form("plots/fitTauDecayKinePlots_%s_leg2_dR_all.eps", decayMode_string.Data());
       fitManager_leg2_dR_all->runPrefit(sepTimesMom, inputFileName_histograms, 
 					"VisInvisDeltaRLabTimesPt", "all", outputFileName_leg2_dR_all);
-      fitManager_leg2_dR_all->runFit(dataset_leg2_all, outputFileName_leg2_dR_all);
+      fitManager_leg2_dR_all->runFit(sepTimesMom, dataset_leg2_all, outputFileName_leg2_dR_all);
       
       TString fitManagerName_leg2_angle_all = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg2", "angle", "all");
       if ( fitResults.find(fitManagerName_leg2_angle_all.Data()) == fitResults.end() ) {
@@ -1245,7 +1423,7 @@ int main(int argc, const char* argv[])
 	Form("plots/fitTauDecayKinePlots_%s_leg2_angle_all.eps", decayMode_string.Data());
       fitManager_leg2_angle_all->runPrefit(sepTimesMom, inputFileName_histograms, 
 					   "VisInvisAngleLabTimesEnergy", "all", outputFileName_leg2_angle_all);
-      fitManager_leg2_angle_all->runFit(dataset_leg2_all, outputFileName_leg2_angle_all);
+      fitManager_leg2_angle_all->runFit(sepTimesMom, dataset_leg2_all, outputFileName_leg2_angle_all);
     }
     
     /*****************************************************************************
@@ -1265,7 +1443,7 @@ int main(int argc, const char* argv[])
       TString outputFileName_leg2_dR_selected = Form("plots/fitTauDecayKinePlots_%s_leg2_dR_selected.eps", decayMode_string.Data());
       fitManager_leg2_dR_selected->runPrefit(sepTimesMom, inputFileName_histograms, 
 					     "VisInvisDeltaRLabTimesPt", "selected2", outputFileName_leg2_dR_selected);
-      fitManager_leg2_dR_selected->runFit(dataset_leg2_selected, outputFileName_leg2_dR_selected);
+      fitManager_leg2_dR_selected->runFit(sepTimesMom, dataset_leg2_selected, outputFileName_leg2_dR_selected);
       
       TString fitManagerName_leg2_angle_selected = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg2", "angle", "selected");
       if ( fitResults.find(fitManagerName_leg2_angle_selected.Data()) == fitResults.end() ) {
@@ -1278,7 +1456,7 @@ int main(int argc, const char* argv[])
 	Form("plots/fitTauDecayKinePlots_%s_leg2_angle_selected.eps", decayMode_string.Data());
       fitManager_leg2_angle_selected->runPrefit(sepTimesMom, inputFileName_histograms, 
 						"VisInvisAngleLabTimesEnergy", "selected2", outputFileName_leg2_angle_selected);
-      fitManager_leg2_angle_selected->runFit(dataset_leg2_selected, outputFileName_leg2_angle_selected);
+      fitManager_leg2_angle_selected->runFit(sepTimesMom, dataset_leg2_selected, outputFileName_leg2_angle_selected);
     }
 
 //--- write results of prefit to ROOT file
@@ -1305,12 +1483,17 @@ int main(int argc, const char* argv[])
 		prefitResult->second->label_.Contains("_selected_") ) dirVisInvisAngleLab_selected->cd();
       else assert(0);
       
-      prefitResult->second->prefitResultLandauMP_->Write();
-      prefitResult->second->prefitResultLandauWidth_->Write();
-      prefitResult->second->prefitResultLandauScaleFactor_->Write();
-      prefitResult->second->prefitResultGaussianMean_->Write();
-      prefitResult->second->prefitResultGaussianSigma_->Write();
-      prefitResult->second->prefitResultMix_->Write();
+      prefitResult->second->prefitResultGMean_->Write();
+      prefitResult->second->prefitResultGSigma_->Write();
+      prefitResult->second->prefitResultSlope_->Write();
+      prefitResult->second->prefitResultOffset_->Write();
+      prefitResult->second->prefitResultC_->Write();
+      prefitResult->second->prefitResultMP1_->Write();
+      prefitResult->second->prefitResultWidth1_->Write();
+      prefitResult->second->prefitResultMP2_->Write();
+      prefitResult->second->prefitResultWidth2_->Write();
+      prefitResult->second->prefitResultX0_->Write();
+      prefitResult->second->prefitResultDeltaX1_->Write();
     }
     delete outputFile_prefit;
     

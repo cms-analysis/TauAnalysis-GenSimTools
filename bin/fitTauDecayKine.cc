@@ -214,6 +214,42 @@ void setRealVar_Value_Range(RooRealVar* x, double value, double xMin, double xMa
 //-------------------------------------------------------------------------------
 //
 
+TString convertTFormulaToRooFitSyntax(const TString& formula)
+{
+  std::cout << "<convertTFormulaToRooFitSyntax>:" << std::endl;
+  std::cout << " formula(TFormula syntax) = " << formula.Data() << std::endl;
+
+  TString retVal = formula;
+
+  unsigned numParameter = 0;
+  for ( unsigned iParameter = 0; iParameter < 10; iParameter++ ) {
+    TString parameterNameTFormula = Form("[%u]", iParameter);
+    TString parameterNameRooFit = Form("@%u", iParameter);
+
+    if ( retVal.Contains(parameterNameTFormula) ) {
+      retVal = retVal.ReplaceAll(parameterNameTFormula, parameterNameRooFit);
+      numParameter = iParameter + 1;
+    }
+  }
+
+  TString xNameTFormula = "x";
+  TString xNameRooFit = Form("@%u", numParameter);
+
+  int index = retVal.Index(xNameTFormula.Data());
+  while ( index != kNPOS ) {
+//--- skip replacing 'x' in case it is part of a character sequence
+//   (representing a function call)
+    if ( (index == 0                     || !TString(retVal[index - 1]).IsAlpha()) &&
+	 (index == (retVal.Length() - 1) || !TString(retVal[index + 1]).IsAlpha()) )
+      retVal = retVal.Replace(index, xNameTFormula.Length(), xNameRooFit.Data());
+    index = retVal.Index(xNameTFormula.Data(), index + xNameRooFit.Length());
+  }
+
+  std::cout << "--> formula(RooFit syntax) = " << retVal.Data() << std::endl;
+
+  return retVal;
+}
+
 void storePrefitResults(RooRealVar* fitParameter, double momMin, double momMax, TGraphErrors* graph)
 {
   std::cout << "<storePrefitResults>:" << std::endl;
@@ -274,27 +310,27 @@ struct fitManager
       prefitParamX0_(momBinning.GetSize() - 1),
       prefitParamDeltaX1_(momBinning.GetSize() - 1),
       prefitModel_(momBinning.GetSize() - 1),
-      fitParamCoeffGMean_(5),
+      fitParamCoeffGMean_(2),
       fitParamGMean_(0),
-      fitParamCoeffGSigma_(5),
+      fitParamCoeffGSigma_(3),
       fitParamGSigma_(0),
-      fitParamCoeffSlope_(5),
+      fitParamCoeffSlope_(2),
       fitParamSlope_(0),
-      fitParamCoeffOffset_(5),
+      fitParamCoeffOffset_(2),
       fitParamOffset_(0),
-      fitParamCoeffC_(5),
+      fitParamCoeffC_(3),
       fitParamC_(0),
       fitParamCoeffMP1_(5),
       fitParamMP1_(0),
-      fitParamCoeffWidth1_(5),
+      fitParamCoeffWidth1_(2),
       fitParamWidth1_(0),
-      fitParamCoeffMP2_(5),
+      fitParamCoeffMP2_(3),
       fitParamMP2_(0),
-      fitParamCoeffWidth2_(5),
+      fitParamCoeffWidth2_(2),
       fitParamWidth2_(0),
-      fitParamCoeffX0_(5),
+      fitParamCoeffX0_(2),
       fitParamX0_(0),
-      fitParamCoeffDeltaX1_(5),
+      fitParamCoeffDeltaX1_(3),
       fitParamDeltaX1_(0),
       fitModel_(0)
   {
@@ -314,31 +350,33 @@ struct fitManager
     prefitResultWidth2_ = new TGraphErrors();
     prefitResultX0_ = new TGraphErrors();
     prefitResultDeltaX1_ = new TGraphErrors();
-
+  
+    momParametrizationFormulaGMean_   = "[0] + [1]*x";
+    momParametrizationFormulaGSigma_  = "TMath::Min([0] + [1]*x, [2])";
+    momParametrizationFormulaSlope_   = "[0] + [1]*x";
+    momParametrizationFormulaOffset_  = "[0] + [1]*x";
+    momParametrizationFormulaC_       = "0.5 + 0.5*TMath::Cos([0]) + (0.5 - TMath::Cos([0]))*(1.0 + TMath::TanH([1] + [2]*x))";
 //--- parametrize pt/energy dependence of fitParameters by (orthogonal) Chebyshev polynomials
 //   ( cf. http://mathworld.wolfram.com/ChebyshevPolynomialoftheFirstKind.html )
-    TString momParametrizationTFormula = 
-      "(1./(x*x*x*x))*([0] + [1]*x + [2]*(2.0*x*x - 1.0)" 
-      " + [3]*(4.0*x*x*x - 3.0*x) + [4]*(8.0*x*x*x*x - 8.0*x*x + 1.0))";
-    momParametrization_forTFormula_ = TString("TMath::Abs(").Append(momParametrizationTFormula).Append(")");
-    momParametrizationC_forTFormula_ = TString("0.5*(1.0 + TMath::TanH(").Append(momParametrization_forTFormula_).Append("))");
-    TString momParametrizationRooFit = 
-      "(1./(@5*@5*@5*@5))*(@0 + @1*@5 + @2*(2.0*@5*@5 - 1.0)" 
-      " + @3*(4.0*@5*@5*@5 - 3.0*@5) + @4*(8.0*@5*@5*@5*@5 - 8.0*@5*@5 + 1.0))";
-    momParametrization_forRooFit_ = TString("TMath::Abs(").Append(momParametrizationRooFit).Append(")");
-    momParametrizationC_forRooFit_ = TString("0.5*(1.0 + TMath::TanH(").Append(momParametrization_forRooFit_).Append("))");
+    momParametrizationFormulaMP1_     =
+      "TMath::Abs((1./(x*x*x*x))*([0] + [1]*x + [2]*(2.0*x*x - 1.0) + [3]*(4.0*x*x*x - 3.0*x) + [4]*(8.0*x*x*x*x - 8.0*x*x + 1.0)))";
+    momParametrizationFormulaWidth1_  = "[0] + [1]*x";
+    momParametrizationFormulaMP2_     = "TMath::Min([0] + [1]*x, [2])";
+    momParametrizationFormulaWidth2_  = "[0] + [1]*x";
+    momParametrizationFormulaX0_      = "[0] + [1]*x";
+    momParametrizationFormulaDeltaX1_ = "TMath::Min([0] + [1]*x, [2])";
     
-    momParamGMean_ = bookTF1("GMean", momParametrization_forTFormula_);
-    momParamGSigma_ = bookTF1("GSigma", momParametrization_forTFormula_);
-    momParamSlope_ = bookTF1("Slope", momParametrization_forTFormula_);
-    momParamOffset_ = bookTF1("Offset", momParametrization_forTFormula_);
-    momParamC_ = bookTF1("C", momParametrizationC_forTFormula_);
-    momParamMP1_ = bookTF1("MP1", momParametrization_forTFormula_);
-    momParamWidth1_ = bookTF1("Width1", momParametrization_forTFormula_);
-    momParamMP2_ = bookTF1("MP2", momParametrization_forTFormula_);
-    momParamWidth2_ = bookTF1("Width2", momParametrization_forTFormula_);
-    momParamX0_ = bookTF1("X0", momParametrization_forTFormula_);
-    momParamDeltaX1_ = bookTF1("DeltaX1", momParametrization_forTFormula_);
+    momParamGMean_ = bookTF1("GMean", momParametrizationFormulaGMean_);
+    momParamGSigma_ = bookTF1("GSigma", momParametrizationFormulaGSigma_);
+    momParamSlope_ = bookTF1("Slope", momParametrizationFormulaSlope_);
+    momParamOffset_ = bookTF1("Offset", momParametrizationFormulaOffset_);
+    momParamC_ = bookTF1("C", momParametrizationFormulaC_);
+    momParamMP1_ = bookTF1("MP1", momParametrizationFormulaMP1_);
+    momParamWidth1_ = bookTF1("Width1", momParametrizationFormulaWidth1_);
+    momParamMP2_ = bookTF1("MP2", momParametrizationFormulaMP2_);
+    momParamWidth2_ = bookTF1("Width2", momParametrizationFormulaWidth2_);
+    momParamX0_ = bookTF1("X0", momParametrizationFormulaX0_);
+    momParamDeltaX1_ = bookTF1("DeltaX1", momParametrizationFormulaDeltaX1_);
   }
 
   ~fitManager()
@@ -584,6 +622,8 @@ struct fitManager
 			    *prefitParamMP2_[iMomBin], *prefitParamWidth2_[iMomBin], 
 			    *prefitParamX0_[iMomBin], *prefitParamDeltaX1_[iMomBin]);
 
+      prefitModel_[iMomBin]->disableAnalyticIntegration();
+
       RooConstVar* gmeanConstraint_value = 
         new RooConstVar("gmeanConstraint_value", "gmeanConstraint_value", histogramMax_x);
       RooConstVar* gmeanConstraint_sigma =
@@ -758,7 +798,17 @@ struct fitManager
       std::cout << " prefit status = " << prefitResult->status() << " (converged = 0)" << std::endl;
       delete prefitResult;
   
+//--- CV: map first Landau --> second Landau in case only one Landau distribution is needed to fit the TAUOLA prediction,
+//        in order to make dx1 linearly increasing at low pt/energy 
+      if ( 0.5*(momMin + momMax) < 50. && (prefitParamX0_[iMomBin]->getVal() + prefitParamDeltaX1_[iMomBin]->getVal()) > 11.5 ) {
+	prefitParamMP2_[iMomBin]->setVal(prefitParamMP1_[iMomBin]->getVal());
+	prefitParamWidth2_[iMomBin]->setVal(prefitParamWidth1_[iMomBin]->getVal());
+	prefitParamDeltaX1_[iMomBin]->setVal(0.);
+      }
+
       printAllPrefitParameter(iMomBin);
+
+      prefitModel_[iMomBin]->enableAnalyticIntegration();
 
       storePrefitResults(prefitParamGMean_[iMomBin], momMin, momMax, prefitResultGMean_);
       storePrefitResults(prefitParamGSigma_[iMomBin], momMin, momMax, prefitResultGSigma_);
@@ -771,7 +821,7 @@ struct fitManager
       storePrefitResults(prefitParamWidth2_[iMomBin], momMin, momMax, prefitResultWidth2_);
       storePrefitResults(prefitParamX0_[iMomBin], momMin, momMax, prefitResultX0_);
       storePrefitResults(prefitParamDeltaX1_[iMomBin], momMin, momMax, prefitResultDeltaX1_);
-
+/*
       prefitParamGMean_[iMomBin]->setVal(2.53134);
       prefitParamGSigma_[iMomBin]->setVal(0.987887);
       prefitParamSlope_[iMomBin]->setVal(0.0443694);
@@ -783,6 +833,7 @@ struct fitManager
       prefitParamWidth2_[iMomBin]->setVal(0.381397);
       prefitParamX0_[iMomBin]->setVal(3.55);
       prefitParamDeltaX1_[iMomBin]->setVal(8.45);
+ */
 
       canvas->Clear();
       canvas->SetLogy();
@@ -840,7 +891,7 @@ struct fitManager
 
   RooAbsReal* buildMomDependentFitParameter(const TString& name, std::vector<RooRealVar*>& fitParameterCoefficients, 
 					    std::vector<double>& prefitParamCoeffValues, std::vector<double>& prefitParamCoeffErrors,
-					    bool isMix = false)
+					    const TString& momParametrizationFormula)
   {
     std::cout << "<fitManager::buildMomDependentFitParameter>:" << std::endl;
 
@@ -866,7 +917,7 @@ struct fitManager
   
     TString fitParameterName = 
       Form("%s_%s_%s_%s_%s", name.Data(), mom_->GetName(), sep_->GetName(), decayMode_string.Data(), label_.Data());
-    TString fitParameterFormula = ( isMix ) ? momParametrizationC_forRooFit_ : momParametrization_forRooFit_;
+    TString fitParameterFormula = convertTFormulaToRooFitSyntax(momParametrizationFormula);
     std::cout << "--> creating momentum-dependent fitParameter: name = " << fitParameterName.Data() << ","
 	      << " formula = " << fitParameterFormula.Data() << std::endl;
     RooAbsReal* fitParameter = new RooFormulaVar(fitParameterName.Data(), fitParameterFormula.Data(), RooArgList(dependents));
@@ -883,17 +934,28 @@ struct fitManager
   
     RooDataHist dataset_binned("dataset_binned", "dataset_binned", RooArgSet(*mom_, *sep_), *dataset);
 
-    fitParamGMean_ = buildMomDependentFitParameter("gmean", fitParamCoeffGMean_, prefitCoeffValGMean_, prefitCoeffErrGMean_);
-    fitParamGSigma_ = buildMomDependentFitParameter("gsigma", fitParamCoeffGSigma_, prefitCoeffValGSigma_, prefitCoeffErrGSigma_);
-    fitParamSlope_ = buildMomDependentFitParameter("slope", fitParamCoeffSlope_, prefitCoeffValSlope_, prefitCoeffErrSlope_);
-    fitParamOffset_ = buildMomDependentFitParameter("offset", fitParamCoeffOffset_, prefitCoeffValOffset_, prefitCoeffErrOffset_);
-    fitParamC_ = buildMomDependentFitParameter("C", fitParamCoeffC_, prefitCoeffValC_, prefitCoeffErrC_, true);
-    fitParamMP1_ = buildMomDependentFitParameter("mp1", fitParamCoeffMP1_, prefitCoeffValMP1_, prefitCoeffErrMP1_);
-    fitParamWidth1_ = buildMomDependentFitParameter("width1", fitParamCoeffWidth1_, prefitCoeffValWidth1_, prefitCoeffErrWidth1_);
-    fitParamMP2_ = buildMomDependentFitParameter("mp2", fitParamCoeffMP2_, prefitCoeffValMP2_, prefitCoeffErrMP2_);
-    fitParamWidth2_ = buildMomDependentFitParameter("width2", fitParamCoeffWidth2_, prefitCoeffValWidth2_, prefitCoeffErrWidth2_);    
-    fitParamX0_ = buildMomDependentFitParameter("x0", fitParamCoeffX0_, prefitCoeffValX0_, prefitCoeffErrX0_);
-    fitParamDeltaX1_ = buildMomDependentFitParameter("dx1", fitParamCoeffDeltaX1_, prefitCoeffValDeltaX1_, prefitCoeffErrDeltaX1_);
+    fitParamGMean_   = buildMomDependentFitParameter("gmean", fitParamCoeffGMean_, 
+						     prefitCoeffValGMean_, prefitCoeffErrGMean_, momParametrizationFormulaGMean_);
+    fitParamGSigma_  = buildMomDependentFitParameter("gsigma", fitParamCoeffGSigma_, 
+						     prefitCoeffValGSigma_, prefitCoeffErrGSigma_, momParametrizationFormulaGSigma_);
+    fitParamSlope_   = buildMomDependentFitParameter("slope", fitParamCoeffSlope_, 
+						     prefitCoeffValSlope_, prefitCoeffErrSlope_, momParametrizationFormulaSlope_);
+    fitParamOffset_  = buildMomDependentFitParameter("offset", fitParamCoeffOffset_, 
+						     prefitCoeffValOffset_, prefitCoeffErrOffset_, momParametrizationFormulaOffset_);
+    fitParamC_       = buildMomDependentFitParameter("C", fitParamCoeffC_, 
+						     prefitCoeffValC_, prefitCoeffErrC_, momParametrizationFormulaC_);
+    fitParamMP1_     = buildMomDependentFitParameter("mp1", fitParamCoeffMP1_, 
+						     prefitCoeffValMP1_, prefitCoeffErrMP1_, momParametrizationFormulaMP1_);
+    fitParamWidth1_  = buildMomDependentFitParameter("width1", fitParamCoeffWidth1_, 
+						     prefitCoeffValWidth1_, prefitCoeffErrWidth1_, momParametrizationFormulaWidth1_);
+    fitParamMP2_     = buildMomDependentFitParameter("mp2", fitParamCoeffMP2_, 
+						     prefitCoeffValMP2_, prefitCoeffErrMP2_, momParametrizationFormulaMP2_);
+    fitParamWidth2_  = buildMomDependentFitParameter("width2", fitParamCoeffWidth2_,
+						     prefitCoeffValWidth2_, prefitCoeffErrWidth2_, momParametrizationFormulaWidth2_);    
+    fitParamX0_      = buildMomDependentFitParameter("x0", fitParamCoeffX0_, 
+						     prefitCoeffValX0_, prefitCoeffErrX0_, momParametrizationFormulaX0_);
+    fitParamDeltaX1_ = buildMomDependentFitParameter("dx1", fitParamCoeffDeltaX1_, 
+						     prefitCoeffValDeltaX1_, prefitCoeffErrDeltaX1_, momParametrizationFormulaDeltaX1_);
     
     TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), "AllMom", sep_->GetName(), label_.Data());
     fitModel_ = 
@@ -901,7 +963,13 @@ struct fitManager
 			  sepTimesMom, *fitParamGMean_, *fitParamGSigma_, *fitParamSlope_, *fitParamOffset_, *fitParamC_,
 			  *fitParamMP1_, *fitParamWidth1_, *fitParamMP2_, *fitParamWidth2_, *fitParamX0_, *fitParamDeltaX1_);
   
-    std::cout << "--> estimate PDF timing..." << std::endl;
+    std::cout << "--> estimate PDF timing (analytic integration enabled)..." << std::endl;
+    pdfTimingTest(fitModel_, mom_, sep_);
+    std::cout << " done." << std::endl;
+    
+    fitModel_->disableAnalyticIntegration();
+    
+    std::cout << "--> estimate PDF timing (analytic integration disabled)..." << std::endl;
     pdfTimingTest(fitModel_, mom_, sep_);
     std::cout << " done." << std::endl;
     
@@ -920,6 +988,8 @@ struct fitManager
     delete fitResult;    
 
     std::cout << " done." << std::endl;
+
+    fitModel_->enableAnalyticIntegration();
 
     std::cout << "--> saving fit results..." << std::endl;
     RooWorkspace* ws = new RooWorkspace("ws", "workspace");
@@ -1010,17 +1080,17 @@ struct fitManager
     std::cout << "<fitManager::writeFitResults>:" << std::endl;
 
     stream << psetName << " = cms.PSet(";
-    writeFitParameter(stream, "gmean", momParametrization_forTFormula_, fitCoeffValGMean_);
-    writeFitParameter(stream, "gsigma", momParametrization_forTFormula_, fitCoeffValGSigma_);
-    writeFitParameter(stream, "slope", momParametrization_forTFormula_, fitCoeffValSlope_);
-    writeFitParameter(stream, "offset", momParametrization_forTFormula_, fitCoeffValOffset_);
-    writeFitParameter(stream, "C", momParametrizationC_forTFormula_, fitCoeffValC_);
-    writeFitParameter(stream, "mp1", momParametrization_forTFormula_, fitCoeffValMP1_);
-    writeFitParameter(stream, "width1", momParametrization_forTFormula_, fitCoeffValWidth1_);
-    writeFitParameter(stream, "mp2", momParametrization_forTFormula_, fitCoeffValMP2_);
-    writeFitParameter(stream, "width2", momParametrization_forTFormula_, fitCoeffValWidth2_);
-    writeFitParameter(stream, "x0", momParametrization_forTFormula_, fitCoeffValX0_);
-    writeFitParameter(stream, "dx1", momParametrization_forTFormula_, fitCoeffValDeltaX1_);
+    writeFitParameter(stream, "gmean", momParametrizationFormulaGMean_, fitCoeffValGMean_);
+    writeFitParameter(stream, "gsigma", momParametrizationFormulaGSigma_, fitCoeffValGSigma_);
+    writeFitParameter(stream, "slope", momParametrizationFormulaSlope_, fitCoeffValSlope_);
+    writeFitParameter(stream, "offset", momParametrizationFormulaOffset_, fitCoeffValOffset_);
+    writeFitParameter(stream, "C", momParametrizationFormulaC_, fitCoeffValC_);
+    writeFitParameter(stream, "mp1", momParametrizationFormulaMP1_, fitCoeffValMP1_);
+    writeFitParameter(stream, "width1", momParametrizationFormulaWidth1_, fitCoeffValWidth1_);
+    writeFitParameter(stream, "mp2", momParametrizationFormulaMP2_, fitCoeffValMP2_);
+    writeFitParameter(stream, "width2", momParametrizationFormulaWidth2_, fitCoeffValWidth2_);
+    writeFitParameter(stream, "x0", momParametrizationFormulaX0_, fitCoeffValX0_);
+    writeFitParameter(stream, "dx1", momParametrizationFormulaDeltaX1_, fitCoeffValDeltaX1_);
     stream << ")" << std::endl;
   }
 
@@ -1057,7 +1127,7 @@ struct fitManager
   std::vector<RooRealVar*> prefitParamWidth2_;
   std::vector<RooRealVar*> prefitParamX0_;
   std::vector<RooRealVar*> prefitParamDeltaX1_;
-  std::vector<RooAbsPdf*> prefitModel_;
+  std::vector<TauDecayKinePdf*> prefitModel_;
 
   TGraphErrors* prefitResultGMean_;
   TGraphErrors* prefitResultGSigma_;
@@ -1071,10 +1141,17 @@ struct fitManager
   TGraphErrors* prefitResultX0_;
   TGraphErrors* prefitResultDeltaX1_;
 
-  TString momParametrization_forTFormula_;
-  TString momParametrizationC_forTFormula_;
-  TString momParametrization_forRooFit_;
-  TString momParametrizationC_forRooFit_;
+  TString momParametrizationFormulaGMean_;
+  TString momParametrizationFormulaGSigma_;
+  TString momParametrizationFormulaSlope_;
+  TString momParametrizationFormulaOffset_;
+  TString momParametrizationFormulaC_;
+  TString momParametrizationFormulaMP1_;
+  TString momParametrizationFormulaWidth1_;
+  TString momParametrizationFormulaMP2_;
+  TString momParametrizationFormulaWidth2_;
+  TString momParametrizationFormulaX0_;
+  TString momParametrizationFormulaDeltaX1_;
 
   TF1* momParamGMean_;
   TF1* momParamGSigma_;
@@ -1133,7 +1210,7 @@ struct fitManager
   RooAbsReal* fitParamX0_;
   std::vector<RooRealVar*> fitParamCoeffDeltaX1_;
   RooAbsReal* fitParamDeltaX1_;
-  RooAbsPdf* fitModel_;
+  TauDecayKinePdf* fitModel_;
 
   std::vector<double> fitCoeffValGMean_;
   std::vector<double> fitCoeffErrGMean_;

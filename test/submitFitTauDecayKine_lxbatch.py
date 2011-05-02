@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import socket
 import subprocess
 import time
 
@@ -27,6 +28,7 @@ resourceRequest = None
 
 workingDirectory = os.getcwd()
 architecture = os.environ["SCRAM_ARCH"]
+hostname = socket.gethostname()
 
 # iterate over all combinations of decay modes and seletions
 for decayMode in decayModesToRun:
@@ -42,11 +44,15 @@ for decayMode in decayModesToRun:
 	print("submissionDirectory = %s" % submissionDirectory)
 	if not os.path.exists(submissionDirectory):
 	    os.makedirs(submissionDirectory)
-
+        
         plotsDirectory = os.path.join(workingDirectory, "plots")
-	print("plotsDirectory = %s" % plotsDirectory)
 	if not os.path.exists(plotsDirectory):
 	    os.makedirs(plotsDirectory)
+        # CV: resolve symbolic links (if any)
+        os.chdir(plotsDirectory)
+        plotsDirectory = os.getcwd()
+        os.chdir(workingDirectory)
+        print("plotsDirectory = %s" % plotsDirectory)
 
 	executable = "%s/bin/%s/fitTauDecayKine" % (workingDirectory[:workingDirectory.find("/src/")], architecture)
 	print("executable = %s" % executable)
@@ -76,7 +82,7 @@ mkdir plots
 %(executable)s %(parameter)s
 scp ./fitTauDecayKinePlots*.root %(workingDirectory)s
 scp ./fitTauDecayKinePlots*.txt %(workingDirectory)s
-scp ./plots/* %(plotsDirectory)s
+scp ./plots/* %(hostname)s:%(plotsDirectory)s
 """ % {
     'submissionDirectory' : submissionDirectory,
     'architecture' : architecture,
@@ -85,6 +91,7 @@ scp ./plots/* %(plotsDirectory)s
     'executable' : executable,
     'parameter' :  parameter,
     'workingDirectory' : workingDirectory,
+    'hostname' : hostname,
     'plotsDirectory' : plotsDirectory
 }
 	scriptFileName = os.path.join(submissionDirectory, "runFitTauDecayKine_%s_%s.csh" % (decayMode, selection))

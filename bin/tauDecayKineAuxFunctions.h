@@ -55,11 +55,11 @@ double encodeDecayMode(int decayMode)
 //-------------------------------------------------------------------------------
 //
 
-TArrayD getBinningMom()
+TArrayD getBinningMom(const TString& decayMode = "undefined")
 {
   TArrayD binning;
   
-  double xMin =  15.0;
+  double xMin = ( decayMode == "Electron_Muon") ? 15. : 20.;
   double xMax = 350.0;
   double dx   =   1.0;
 
@@ -75,7 +75,7 @@ TArrayD getBinningMom()
   return binning;
 }
 
-TArrayD getBinningSep()
+TArrayD getBinningSep(const TString& decayMode = "undefined")
 {
   unsigned numBins = 400;
   double xMin = 0.0;
@@ -93,7 +93,7 @@ TArrayD getBinningSep()
   return binning;
 }
 
-TArrayD getBinningSepTimesMom()
+TArrayD getBinningSepTimesMom(const TString& decayMode = "undefined")
 {
   unsigned numBins = 120;
   double xMin =  0.0;

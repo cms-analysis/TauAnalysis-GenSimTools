@@ -23,12 +23,14 @@ submit = "yes"
 #submit = "no"
 
 queue = "1nd"
+#queue = "1nh"
 
 resourceRequest = None
 
 workingDirectory = os.getcwd()
 architecture = os.environ["SCRAM_ARCH"]
-hostname = socket.gethostname()
+hostname = "ucdavis.cern.ch"
+plotsDirectory = "/data1/veelken/CMSSW_4_1_x/plots/GenSimTools"
 
 # iterate over all combinations of decay modes and seletions
 for decayMode in decayModesToRun:
@@ -45,13 +47,6 @@ for decayMode in decayModesToRun:
 	if not os.path.exists(submissionDirectory):
 	    os.makedirs(submissionDirectory)
         
-        plotsDirectory = os.path.join(workingDirectory, "plots")
-	if not os.path.exists(plotsDirectory):
-	    os.makedirs(plotsDirectory)
-        # CV: resolve symbolic links (if any)
-        os.chdir(plotsDirectory)
-        plotsDirectory = os.getcwd()
-        os.chdir(workingDirectory)
         print("plotsDirectory = %s" % plotsDirectory)
 
 	executable = "%s/bin/%s/fitTauDecayKine" % (workingDirectory[:workingDirectory.find("/src/")], architecture)
@@ -65,9 +60,7 @@ for decayMode in decayModesToRun:
 	    nslsCommand += " | grep %s" % inputFileName_pattern_item
 	print("nslsCommand = %s" % nslsCommand)
 
-	script = \
-"""
-#!/bin/csh
+	script = """#!/bin/csh
 limit vmem unlim
 cd %(submissionDirectory)s
 setenv SCRAM_ARCH %(architecture)s
@@ -78,11 +71,13 @@ foreach fileName (${fileNames})
     echo "copying fileName %(inputFilePath)s/${fileName} --> ./${fileName}"
     rfcp %(inputFilePath)s/${fileName} ./${fileName}
 end
+rfcp /castor/cern.ch/user/v/veelken/CMSSW_4_1_x/plots/tauDecayKine/makeTauDecayKinePlots.root .
 mkdir plots
 %(executable)s %(parameter)s
 scp ./fitTauDecayKinePlots*.root %(workingDirectory)s
 scp ./fitTauDecayKinePlots*.txt %(workingDirectory)s
 scp ./plots/* %(hostname)s:%(plotsDirectory)s
+scp ./mcTauDecayKine*.root %(workingDirectory)s
 """ % {
     'submissionDirectory' : submissionDirectory,
     'architecture' : architecture,

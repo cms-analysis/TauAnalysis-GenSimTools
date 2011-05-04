@@ -18,7 +18,7 @@
 
 int main(int argc, const char* argv[])
 {
-  if ( argc < 5 ) {
+  if ( argc < 6 ) {
     std::cerr << "Usage: ./testRooWorkSpace_loading inputFileName wsName pdfName momName sepName" << std::endl;
     return 1;
   }
@@ -35,6 +35,9 @@ int main(int argc, const char* argv[])
   std::cout << " momName = " << momName.Data() << std::endl;
   TString sepName = argv[5];
   std::cout << " sepName = " << sepName.Data() << std::endl;
+  TString outputFileName = Form("testRooWorkSpace_loading_%s", inputFileName.Data());
+  outputFileName = outputFileName.ReplaceAll(".root", ".png");
+  std::cout << " outputFileName = " << outputFileName.Data() << std::endl;
   
   TFile* inputFile = new TFile(inputFileName.Data());
   std::cout << "--> inputFile = " << inputFile << std::endl;
@@ -80,13 +83,15 @@ int main(int argc, const char* argv[])
 
     canvas->SetLogy(false);
     canvas->Update();
-    TString outputFileName_linear = Form("testRooWorkSpace_loading_Pt%2.1fGeV_linear.png", *momTestValue);
+    TString outputFileName_linear = outputFileName;
+    outputFileName_linear = outputFileName_linear.ReplaceAll(".png", Form("Pt%2.1fGeV_linear.png", *momTestValue));
     outputFileName_linear = outputFileName_linear.ReplaceAll(".5GeV", "_5GeV");
     canvas->SaveAs(outputFileName_linear.Data());
 
     canvas->SetLogy(true);
     canvas->Update();
-    TString outputFileName_log = Form("testRooWorkSpace_loading_Pt%2.1fGeV_log.png", *momTestValue);
+    TString outputFileName_log = outputFileName;
+    outputFileName_log = outputFileName_linear.ReplaceAll(".png", Form("Pt%2.1fGeV_log.png", *momTestValue));
     outputFileName_log = outputFileName_log.ReplaceAll(".5GeV", "_5GeV");
     canvas->SaveAs(outputFileName_log.Data());
   }

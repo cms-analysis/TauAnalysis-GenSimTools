@@ -599,9 +599,9 @@ struct fitManager
       double momMin = momBinning_[iMomBin];
       double momMax = momBinning_[iMomBin + 1];
     
-      TString momName_string  = "Mom";
-      if      ( inputDirName.Contains("DeltaR") ) momName_string  = "Pt";
-      else if ( inputDirName.Contains("Angle")  ) momName_string  = "Energy";
+      TString momName_string = "Mom";
+      if      ( inputDirName.Contains("DeltaR") ) momName_string = "Pt";
+      else if ( inputDirName.Contains("Angle")  ) momName_string = "Energy";
 
       TString histogramName = 
 	Form("%s_%s%s%2.0fto%2.0f", decayMode_string.Data(), label.Data(), momName_string.Data(), momMin, momMax);

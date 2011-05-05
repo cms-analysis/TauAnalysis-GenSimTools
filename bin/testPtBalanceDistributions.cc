@@ -273,26 +273,27 @@ int main(int argc, const char *argv[]) {
   RooRealVar negativeOne("negativeOne", "negativeOne", -1., -5., 0.);
   negativeOne.setConstant(true);
 
-  RooRealVar positiveOne("positiveOne", "positiveOne", 0.3, 0., 5.);
+  RooRealVar positiveOne("positiveOne", "positiveOne", 1.0, 0., 5.);
   positiveOne.setConstant(true);
 
-  RooExponential preferSkewNorm("constrint", "constraing", skewNormAndGaussMix, negativeOne);
+  RooRealVar positiveOhPoint2("positiveOhPoint2", "positiveOhPoint2", 0.2, 0., 5.);
+  positiveOhPoint2.setConstant(true);
 
-  RooGaussian preferSymmetric("constraintSym", "constraintSym",
-      skewNormalSkew, zero, positiveOne);
-
-  RooProdPdf skewNormAndGaussConstrained("skewNormConstrained",
-      "skewNormConstrained", RooArgList(preferSymmetric, preferSkewNorm, skewNormPlusGaussModel));
-
-  RooRealVar skewNormalRelPointiness("skewPoint", "skewPoint", 0.5, 0.05, 1);
+  RooRealVar skewNormalRelPointiness("skewPoint", "skewPoint", 0.5, 0.01, 0.7);
 
   RooFormulaVar skewNormal2Scale("skewNormal2Scale", "skewNormal2Scale",
       "@0*@1", RooArgList(skewNormalRelPointiness, skewNormalScale));
 
+  RooRealVar skewNormalRelLoc("skewNormalRelLoc","skewNormalRelLoc",
+      1.0, 0.8, 1.2);
+
+  RooFormulaVar skewNormalLoc2("skewNormalLoc2", "skewNormalRelLoc",
+      "@0*@1", RooArgList(skewNormalRelLoc, skewNormalLoc));
+
   RooSkewNormal skewNormal2("skewNorm2", "skewNorm2",
       *scaledLeg1Pt, skewNormalLoc, skewNormal2Scale, skewNormalSkew);
 
-  RooRealVar doubleSkewMix("doubleSkewMix", "doubleSkewMix", 0.1, 1e-6, 0.95);
+  RooRealVar doubleSkewMix("doubleSkewMix", "doubleSkewMix", 0.1, 0, 0.5);
   RooAddPdf skewNormPlusSkewNormModel("skewNormAndSkewNorm", "skewNormAndSkewNorm",
       //skewNormal2, skewNormalModel, doubleSkewMix);
       skewNormalModel, skewNormal2, doubleSkewMix);
@@ -300,8 +301,13 @@ int main(int argc, const char *argv[]) {
   RooExponential preferFatSkew("fatSkewConstraint",
       "fatSkewConstraint", doubleSkewMix, negativeOne);
 
+  RooGaussian preferSameLoc("preferSameLoc", "preferSameLoc",
+      skewNormalRelLoc, positiveOne, positiveOhPoint2);
+
   RooProdPdf doubleSkewConstrained("doubleSkewNormConstrained",
-      "doubleSkewNormConstrained", RooArgList(preferFatSkew,
+      "doubleSkewNormConstrained", RooArgList(
+        //preferSameLoc,
+        preferFatSkew,
         skewNormPlusSkewNormModel));
 
   std::cout << "value is: " << skewedNormalPow.getVal() << std::endl;
@@ -320,7 +326,7 @@ int main(int argc, const char *argv[]) {
 
   std::cout << "Doing slices" << std::endl;
 
-  size_t nPhiSlices = 5;
+  size_t nPhiSlices = 8;
   double endPhi = 1.8;
   size_t nMassSlices = 10;
   double startMass = 100;
@@ -334,55 +340,55 @@ int main(int argc, const char *argv[]) {
     fitResults[model->GetName()] = std::vector<PreFitResult>();
   }
 
-  for (size_t iMass = 0; iMass < nMassSlices; ++iMass) {
-    double massSliceSize = (endMass - startMass)*1.0/nMassSlices;
-    double minMass = startMass + massSliceSize*iMass;
-    double maxMass = startMass + massSliceSize*(iMass+1);
-    double nominalMass = minMass + (maxMass - minMass)*0.5;
+  for (size_t iPhi = 0; iPhi < nPhiSlices; ++iPhi) {
+    double phiSliceSize = endPhi/nPhiSlices;
+    double minPhi = phiSliceSize*iPhi;
+    double maxPhi = phiSliceSize*(iPhi+1);
+    double nominalPhi = minPhi + (maxPhi - minPhi)*0.5;
 
-    std::stringstream massCut;
-    massCut << minMass << " < resonanceMass &&  resonanceMass < "
-      << maxMass;
+    /*
+       skewNormalLoc = 1;
+       skewNormalLoc.setError(0.2);
+       skewNormalScale = 0.1;
+       skewNormalSkew = 2;
+       */
 
-    std::auto_ptr<RooAbsData> massSliceData(selectedDataLeg1High->reduce(
-      RooArgSet(observable, *dPhi), massCut.str().c_str()));
+    std::stringstream phiCut;
+    phiCut << minPhi << " < dPhi && dPhi < " << maxPhi;
 
-    std::stringstream massRangeStr;
-    massRangeStr << "(" << minMass << " - " << maxMass << ")";
+    std::stringstream phiRangeStr;
+    phiRangeStr << "(" << minPhi << " - " << maxPhi << ")";
 
-    std::cout << "Initialized mass slice " << iMass
-      << massRangeStr.str() << " with "
-      << massSliceData->numEntries() << " entries." << std::endl;
+    std::auto_ptr<RooAbsData> phiSliceData(selectedDataLeg1High->reduce(
+          RooArgSet(observable, *dPhi, resonanceMass), phiCut.str().c_str()));
 
-    for (size_t iPhi = 0; iPhi < nPhiSlices; ++iPhi) {
-      double phiSliceSize = endPhi/nPhiSlices;
-      double minPhi = phiSliceSize*iPhi;
-      double maxPhi = phiSliceSize*(iPhi+1);
-      double nominalPhi = minPhi + (maxPhi - minPhi)*0.5;
+    std::cout << "Initialized phi slice " << iPhi
+      << " (" << minPhi << " - " << maxPhi << ") with "
+      << phiSliceData->numEntries() << " entries." << std::endl;
 
-      /*
-      skewNormalLoc = 1;
-      skewNormalLoc.setError(0.2);
-      skewNormalScale = 0.1;
-      skewNormalSkew = 2;
-      */
+    for (size_t iMass = 0; iMass < nMassSlices; ++iMass) {
+      double massSliceSize = (endMass - startMass)*1.0/nMassSlices;
+      double minMass = startMass + massSliceSize*iMass;
+      double maxMass = startMass + massSliceSize*(iMass+1);
+      double nominalMass = minMass + (maxMass - minMass)*0.5;
 
-      std::stringstream phiCut;
-      phiCut << minPhi << " < dPhi && dPhi < " << maxPhi;
+      std::stringstream massCut;
+      massCut << minMass << " < resonanceMass &&  resonanceMass < "
+        << maxMass;
 
-      std::stringstream phiRangeStr;
-      phiRangeStr << "(" << minPhi << " - " << maxPhi << ")";
+      std::auto_ptr<RooAbsData> massSliceData(phiSliceData->reduce(
+            RooArgSet(observable, resonanceMass), massCut.str().c_str()));
 
-      std::auto_ptr<RooAbsData> phiSliceData(massSliceData->reduce(
-            RooArgSet(observable), phiCut.str().c_str()));
+      std::stringstream massRangeStr;
+      massRangeStr << "(" << minMass << " - " << maxMass << ")";
 
-      std::cout << "Initialized phi slice " << iPhi
-        << " (" << minPhi << " - " << maxPhi << ") with "
-        << phiSliceData->numEntries() << " entries." << std::endl;
+      std::cout << "Initialized mass slice " << iMass
+        << massRangeStr.str() << " with "
+        << massSliceData->numEntries() << " entries." << std::endl;
 
       std::cout << "Binning histogram" << std::endl;
       RooDataHist phiMassPointData("phiMassPoint", "phiMassPoint",
-        RooArgSet(observable), *phiSliceData);
+        RooArgSet(observable), *massSliceData);
 
       std::cout << "Fitting all models" << std::endl;
       std::auto_ptr<RooPlot> frame(observable.frame(Range(0, 4.)));
@@ -393,7 +399,7 @@ int main(int argc, const char *argv[]) {
         iColor += 2;
         std::cout << "Fitting model: " << model->GetName() << std::endl;
         RooFitResult* result = model->fitTo(
-            *phiSliceData, NumCPU(4), Verbose(true), Save(true));
+            *massSliceData, NumCPU(4), Verbose(true), Save(true));
 
         fitResults[model->GetName()].push_back(
             PreFitResult(result, "", nominalMass, nominalPhi,

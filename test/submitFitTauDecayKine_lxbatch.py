@@ -14,6 +14,16 @@ decayModesToRun = [
     "ThreeProng0Pi0"	
 ]
 
+legsToRun = [
+    "leg1",
+    "leg2"	
+]
+
+parametrizationsToRun = [
+    "dR",
+    "angle"	
+]
+
 selectionsToRun = [
     "all",
     "selected"	
@@ -25,7 +35,8 @@ submit = "yes"
 queue = "1nd"
 #queue = "1nh"
 
-resourceRequest = None
+#resourceRequest = None
+resourceRequest = "rusage[mem=3200, swp=3200]"
 
 workingDirectory = os.getcwd()
 architecture = os.environ["SCRAM_ARCH"]
@@ -34,33 +45,35 @@ plotsDirectory = "/data1/veelken/CMSSW_4_1_x/plots/GenSimTools"
 
 # iterate over all combinations of decay modes and seletions
 for decayMode in decayModesToRun:
-    for selection in selectionsToRun:
+    for leg in legsToRun:
+        for parametrization in parametrizationsToRun:
+            for selection in selectionsToRun:
 
-        inputFilePath = inputFileNames[:inputFileNames.rfind('/')]
-	print("inputFilePath = %s" % inputFilePath)
-	inputFileName_pattern = inputFileNames[inputFileNames.rfind('/') + 1:]
-	print("inputFileName_pattern = %s" % inputFileName_pattern)
+                inputFilePath = inputFileNames[:inputFileNames.rfind('/')]
+    	        print("inputFilePath = %s" % inputFilePath)
+    	        inputFileName_pattern = inputFileNames[inputFileNames.rfind('/') + 1:]
+	        print("inputFileName_pattern = %s" % inputFileName_pattern)
 
-	# build shell script
-	submissionDirectory = os.path.join(workingDirectory, "lxbatch")
-	print("submissionDirectory = %s" % submissionDirectory)
-	if not os.path.exists(submissionDirectory):
-	    os.makedirs(submissionDirectory)
+	        # build shell script
+	        submissionDirectory = os.path.join(workingDirectory, "lxbatch")
+	        print("submissionDirectory = %s" % submissionDirectory)
+	        if not os.path.exists(submissionDirectory):
+	            os.makedirs(submissionDirectory)
         
-        print("plotsDirectory = %s" % plotsDirectory)
+                print("plotsDirectory = %s" % plotsDirectory)
 
-	executable = "%s/bin/%s/fitTauDecayKine" % (workingDirectory[:workingDirectory.find("/src/")], architecture)
-	print("executable = %s" % executable)
-	parameter = "'%s' %s %s" % (inputFileName_pattern, decayMode, selection)
-	print("parameter = %s" % parameter)
+	        executable = "%s/bin/%s/fitTauDecayKine" % (workingDirectory[:workingDirectory.find("/src/")], architecture)
+	        print("executable = %s" % executable)
+	        parameter = "'%s' %s %s %s %s" % (inputFileName_pattern, decayMode, leg, parametrization, selection)
+	        print("parameter = %s" % parameter)
 
-	nslsCommand = "nsls %s" % inputFilePath	
-	inputFileName_pattern_items = inputFileName_pattern.split('*')
-	for inputFileName_pattern_item in inputFileName_pattern_items:
-	    nslsCommand += " | grep %s" % inputFileName_pattern_item
-	print("nslsCommand = %s" % nslsCommand)
+	        nslsCommand = "nsls %s" % inputFilePath	
+	        inputFileName_pattern_items = inputFileName_pattern.split('*')
+	        for inputFileName_pattern_item in inputFileName_pattern_items:
+	            nslsCommand += " | grep %s" % inputFileName_pattern_item
+	        print("nslsCommand = %s" % nslsCommand)
 
-	script = """#!/bin/csh
+	        script = """#!/bin/csh
 limit vmem unlim
 cd %(submissionDirectory)s
 setenv SCRAM_ARCH %(architecture)s
@@ -89,31 +102,33 @@ scp ./mcTauDecayKine*.root %(workingDirectory)s
     'hostname' : hostname,
     'plotsDirectory' : plotsDirectory
 }
-	scriptFileName = os.path.join(submissionDirectory, "runFitTauDecayKine_%s_%s.csh" % (decayMode, selection))
-	scriptFile = open(scriptFileName, "w")
-	scriptFile.write(script)
-	scriptFile.close()    
+	        scriptFileName = os.path.join(submissionDirectory, "runFitTauDecayKine_%s_%s_%s_%s.csh" \
+                                % (decayMode, leg, parametrization, selection))
+	        scriptFile = open(scriptFileName, "w")
+	        scriptFile.write(script)
+	        scriptFile.close()    
 
-        # make shell script executable
-	os.chmod(scriptFileName,0744)
+                # make shell script executable
+	        os.chmod(scriptFileName, 0744)
     
-	logFileDirectory = os.path.join(workingDirectory, "lxbatch_log")
-	if not os.path.exists(logFileDirectory):
-	    os.makedirs(logFileDirectory)
+	        logFileDirectory = os.path.join(workingDirectory, "lxbatch_log")
+	        if not os.path.exists(logFileDirectory):
+	            os.makedirs(logFileDirectory)
     
-        # submit job to CERN batch system
-	if submit == "yes":
-	    logFileName = os.path.join(logFileDirectory, "fitTauDecayKine_%s_%s.log" % (decayMode, selection))
-	    print("logFileName = " + logFileName)
-	    jobName = "fitTauDecayKine_%s_%s" % (decayMode, selection)
-            bsubCommand = 'bsub -q ' + queue + ' -J ' + jobName + ' -L /bin/csh -eo ' + logFileName + ' -oo ' + logFileName
-	    if resourceRequest != None:
-	        bsubCommand += ' -R \"' + resourceRequest + '\" '			
-	    bsubCommand += ' < ' + scriptFileName
-	    print("bsubCommand = '%s'" % bsubCommand)
-	    subprocess.call(bsubCommand, shell = True)
+                # submit job to CERN batch system
+	        if submit == "yes":
+	            logFileName = os.path.join(logFileDirectory, "fitTauDecayKine_%s_%s_%s_%s.log" \
+                                 % (decayMode, leg, parametrization, selection))
+	            print("logFileName = " + logFileName)
+	            jobName = "fitTauDecayKine_%s_%s_%s_%s" % (decayMode, leg, parametrization, selection)
+                    bsubCommand = 'bsub -q ' + queue + ' -J ' + jobName + ' -L /bin/csh -eo ' + logFileName + ' -oo ' + logFileName
+	            if resourceRequest != None:
+	                bsubCommand += ' -R \"' + resourceRequest + '\" '			
+	            bsubCommand += ' < ' + scriptFileName
+	            print("bsubCommand = '%s'" % bsubCommand)
+	            subprocess.call(bsubCommand, shell = True)
 
-	    # wait for a few seconds, in order not to generate too many castor requests in too short a time
-	    # (maximum number of permissible requests = 900 in 180 seconds; jobs will abort in case limit gets exceeded)
-  	    time.sleep(1)
+	            # wait for a few seconds, in order not to generate too many castor requests in too short a time
+	            # (maximum number of permissible requests = 900 in 180 seconds; jobs will abort in case limit gets exceeded)
+  	            time.sleep(1)
     

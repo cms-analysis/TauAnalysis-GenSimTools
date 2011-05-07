@@ -329,7 +329,7 @@ struct fitManager
       prefitModel_(momBinning.GetSize() - 1),
       fitParamCoeffGMean_(5),
       fitParamGMean_(0),
-      fitParamCoeffGSigma_(5),
+      fitParamCoeffGSigma_(5),      
       fitParamGSigma_(0),
       fitParamCoeffSlope_(2),
       fitParamSlope_(0),
@@ -609,6 +609,8 @@ struct fitManager
       std::cout << " histogramName = " << histogramName.Data() << ": histogram = " << histogram << std::endl;
       enlargeHistogramErrors(histogram);
 
+      if ( histogram->GetEntries() < 500 ) continue;
+
       TString datahistName = TString(histogramName).Append("_datahist");
       RooDataHist* datahist = new RooDataHist(datahistName.Data(), datahistName.Data(), RooArgList(*sepTimesMom_prefit), histogram);
       std::cout << " datahist = " << datahist << std::endl;
@@ -660,7 +662,8 @@ struct fitManager
       TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), sep_->GetName(), label_.Data());
       prefitModel_[iMomBin] = 
 	new TauDecayKinePdf(modelName.Data(), modelName.Data(), 
-			    *sepTimesMom_prefit, *prefitParamGMean_[iMomBin], *prefitParamGSigma_[iMomBin],
+			    *sepTimesMom_prefit, 
+			    *prefitParamGMean_[iMomBin], *prefitParamGSigma_[iMomBin], 
 			    *prefitParamSlope_[iMomBin], *prefitParamOffset_[iMomBin], *prefitParamC_[iMomBin],
 			    *prefitParamMP1_[iMomBin], *prefitParamWidth1_[iMomBin], 
 			    *prefitParamMP2_[iMomBin], *prefitParamWidth2_[iMomBin], 
@@ -844,7 +847,9 @@ struct fitManager
   
 //--- CV: map first Landau --> second Landau in case only one Landau distribution is needed to fit the TAUOLA prediction,
 //        in order to make dx1 linearly increasing at low pt/energy
-      if ( 0.5*(momMin + momMax) < 125. && (prefitParamX0_[iMomBin]->getVal() + prefitParamDeltaX1_[iMomBin]->getVal()) > 11.5 ) {
+      if ( (prefitParamX0_[iMomBin]->getVal() + prefitParamDeltaX1_[iMomBin]->getVal()) > 11.5 &&
+	   ((0.5*(momMin + momMax) < 75. && decayMode_string == "Electron_Muon")  || 
+	    (0.5*(momMin + momMax) < 75. && decayMode_string == "ThreeProng0Pi0")) ) {
 	std::cout << "mapping Landau1 --> Landau2." << std::endl;
 	setRealVar_Value_Range(prefitParamMP2_[iMomBin], prefitParamMP1_[iMomBin]->getVal(), 
 			       prefitParamMP1_[iMomBin]->getVal() - epsilon, prefitParamMP1_[iMomBin]->getVal() + epsilon);
@@ -961,14 +966,12 @@ struct fitManager
     return fitParameter;
   }
 
-  void runFit(RooAbsData* dataset, const TString& outputFileName)
+  void buildFitModel(const TString& outputFileName)
   {
-    std::cout << "<fitManager::runFit>:" << std::endl;
+    std::cout << "<fitManager::buildFitModel>:" << std::endl;
 
     TString decayMode_string = getDecayMode_string(decayMode_);
-  
-    //RooDataHist dataset_binned("dataset_binned", "dataset_binned", RooArgSet(*mom_, *sepTimesMom_), *dataset);
-
+     
     fitParamGMean_   = buildMomDependentFitParameter("gmean", fitParamCoeffGMean_, 
 						     prefitCoeffValGMean_, prefitCoeffErrGMean_, momParametrizationFormulaGMean_);
     fitParamGSigma_  = buildMomDependentFitParameter("gsigma", fitParamCoeffGSigma_, 
@@ -995,7 +998,8 @@ struct fitManager
     TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), "AllMom", sep_->GetName(), label_.Data());
     fitModel_ = 
       new TauDecayKinePdf(modelName.Data(), modelName.Data(), 
-			  *sepTimesMom_, *fitParamGMean_, *fitParamGSigma_, *fitParamSlope_, *fitParamOffset_, *fitParamC_,
+			  *sepTimesMom_, 
+			  *fitParamGMean_, *fitParamGSigma_, *fitParamSlope_, *fitParamOffset_, *fitParamC_,
 			  *fitParamMP1_, *fitParamWidth1_, *fitParamMP2_, *fitParamWidth2_, *fitParamX0_, *fitParamDeltaX1_);
   
     std::cout << "--> saving prefit results..." << std::endl;
@@ -1017,6 +1021,15 @@ struct fitManager
     std::cout << "--> estimate PDF timing (analytic integration disabled)..." << std::endl;
     pdfTimingTest(fitModel_, mom_, sepTimesMom_);
     std::cout << " done." << std::endl;
+  }
+
+  void runFit(RooAbsData* dataset, const TString& outputFileName)
+  {
+    std::cout << "<fitManager::runFit>:" << std::endl;
+
+    TString decayMode_string = getDecayMode_string(decayMode_);
+
+    //RooDataHist dataset_binned("dataset_binned", "dataset_binned", RooArgSet(*mom_, *sepTimesMom_), *dataset);
     
     RooLinkedList options;
     options.Add(new RooCmdArg(RooFit::ConditionalObservables(*mom_)));
@@ -1291,7 +1304,7 @@ struct fitManager
 int main(int argc, const char* argv[])
 {
   if ( argc < 5 ) {
-    std::cerr << "Usage: ./fitTauDecayKine inputFileNames decayMode leg selection" << std::endl;
+    std::cerr << "Usage: ./fitTauDecayKine inputFileNames decayMode leg parametrization selection" << std::endl;
     return 1;
   }
 
@@ -1311,11 +1324,19 @@ int main(int argc, const char* argv[])
   bool runLeg1     = ( std::string(argv[3]) == "leg1"     ) ? true : false;
   bool runLeg2     = ( std::string(argv[3]) == "leg2"     ) ? true : false;
 
-  bool runAll      = ( std::string(argv[4]) == "all"      ) ? true : false;
-  bool runSelected = ( std::string(argv[4]) == "selected" ) ? true : false;
+  bool runDeltaR   = ( std::string(argv[4]) == "dR"       ) ? true : false;
+  bool runAngle    = ( std::string(argv[4]) == "angle"    ) ? true : false;
+  if ( !(runDeltaR || runAngle) )
+    throw cms::Exception("fitTauDecayKine")
+      << "Invalid Configuration Parameter 'parametrization' = " << argv[4] << " !!\n";
+
+  bool runAll      = ( std::string(argv[5]) == "all"      ) ? true : false;
+  bool runSelected = ( std::string(argv[5]) == "selected" ) ? true : false;
   if ( !(runAll || runSelected) )
     throw cms::Exception("fitTauDecayKine")
-      << "Invalid Configuration Parameter 'selection' = " << argv[3] << " !!\n";
+      << "Invalid Configuration Parameter 'selection' = " << argv[5] << " !!\n";
+
+  bool runFit = false;
   
   TString inputFileName_histograms = "makeTauDecayKinePlots.root";
 
@@ -1355,8 +1376,11 @@ int main(int argc, const char* argv[])
 
   // Load the data
   std::cout << "Loading data from " << inputFileNames_ntuple <<  std::endl;
-  TChain* dataTree = new TChain("makePtBalanceNtuple/ptBalanceNtuple");
-  dataTree->Add(inputFileNames_ntuple);
+  TChain* dataTree = 0;
+  if ( runFit ) {
+    dataTree = new TChain("makePtBalanceNtuple/ptBalanceNtuple");
+    dataTree->Add(inputFileNames_ntuple);
+  }
 
   /*****************************************************************************
    ********                   Define variabes and data                      ****
@@ -1369,11 +1393,15 @@ int main(int argc, const char* argv[])
   RooRealVar leg1DecayMode("leg1DecayMode", "leg1DecayMode", -1.5, +11.5);
   RooRealVar leg1VisInvisAngleLab("leg1VisInvisAngleLab", "leg1VisInvisAngleLab", 0., 1.);
   RooRealVar leg1VisInvisDeltaRLab("leg1VisInvisDeltaRLab", "leg1VisInvisDeltaRLab", 0., 1.);
+  RooRealVar leg1VisInvisAngleLabTimesEnergy("leg1VisInvisAngleLabTimesEnergy", "leg1VisInvisAngleLabTimesEnergy", 0., 12.);
+  RooRealVar leg1VisInvisDeltaRLabTimesPt("leg1VisInvisDeltaRLabTimesPt", "leg1VisInvisDeltaRLabTimesPt", 0., 12.);
 
   leg1Energy.setBins(350);
   leg1Pt.setBins(250);
   leg1VisInvisAngleLab.setBins(120);
   leg1VisInvisDeltaRLab.setBins(120);
+  leg1VisInvisAngleLabTimesEnergy.setBins(120);
+  leg1VisInvisDeltaRLabTimesPt.setBins(120);
 
   RooRealVar leg2Energy("leg2Energy", "leg2Energy", 0., 350.);
   RooRealVar leg2Pt("leg2Pt", "leg2Pt", 0., 250.);
@@ -1382,11 +1410,15 @@ int main(int argc, const char* argv[])
   RooRealVar leg2DecayMode("leg2DecayMode", "leg2DecayMode", -1.5, +11.5);
   RooRealVar leg2VisInvisAngleLab("leg2VisInvisAngleLab", "leg2VisInvisAngleLab", 0., 1.);
   RooRealVar leg2VisInvisDeltaRLab("leg2VisInvisDeltaRLab", "leg2VisInvisDeltaRLab", 0., 1.);
+  RooRealVar leg2VisInvisAngleLabTimesEnergy("leg2VisInvisAngleLabTimesEnergy", "leg2VisInvisAngleLabTimesEnergy", 0., 12.);
+  RooRealVar leg2VisInvisDeltaRLabTimesPt("leg2VisInvisDeltaRLabTimesPt", "leg2VisInvisDeltaRLabTimesPt", 0., 12.);  
 
   leg2Energy.setBins(350);
   leg2Pt.setBins(250);
   leg2VisInvisAngleLab.setBins(120);
   leg2VisInvisDeltaRLab.setBins(120);
+  leg2VisInvisAngleLabTimesEnergy.setBins(120);
+  leg2VisInvisDeltaRLabTimesPt.setBins(120);
 
   TObjArray variables;
   variables.Add(&leg1Energy);
@@ -1396,6 +1428,8 @@ int main(int argc, const char* argv[])
   variables.Add(&leg1DecayMode);
   variables.Add(&leg1VisInvisAngleLab);
   variables.Add(&leg1VisInvisDeltaRLab);
+  variables.Add(&leg1VisInvisAngleLabTimesEnergy);
+  variables.Add(&leg1VisInvisDeltaRLabTimesPt);
   variables.Add(&leg2Energy);
   variables.Add(&leg2Pt);
   variables.Add(&leg2VisPt);
@@ -1403,43 +1437,19 @@ int main(int argc, const char* argv[])
   variables.Add(&leg2DecayMode);
   variables.Add(&leg2VisInvisAngleLab);
   variables.Add(&leg2VisInvisDeltaRLab);
+  variables.Add(&leg2VisInvisAngleLabTimesEnergy);
+  variables.Add(&leg2VisInvisDeltaRLabTimesPt);
 
-  RooDataSet* dataset_all = new RooDataSet("dataset", "datasetset", RooArgSet(variables), RooFit::Import(*dataTree));
-  std::cout << "Processing " << dataset_all->numEntries() << " TTree entries..." << std::endl;
-  
-  RooFormulaVar* leg1VisInvisAngleLabTimesEnergyFormula = 
-    new RooFormulaVar("leg1VisInvisAngleLabTimesEnergyFormula", "@0*@1", RooArgSet(leg1Energy, leg1VisInvisAngleLab));
-  RooRealVar* leg1VisInvisAngleLabTimesEnergy = 
-    static_cast<RooRealVar*>(dataset_all->addColumn(*leg1VisInvisAngleLabTimesEnergyFormula));
-  leg1VisInvisAngleLabTimesEnergy->setRange(0., 12.);
-  leg1VisInvisAngleLabTimesEnergy->setBins(120);
-
-  RooFormulaVar* leg1VisInvisDeltaRLabTimesPtFormula = 
-    new RooFormulaVar("leg1VisInvisDeltaRLabTimesPtFormula", "@0*@1", RooArgSet(leg1Pt, leg1VisInvisDeltaRLab));
-  RooRealVar* leg1VisInvisDeltaRLabTimesPt = 
-    static_cast<RooRealVar*>(dataset_all->addColumn(*leg1VisInvisDeltaRLabTimesPtFormula));
-  leg1VisInvisDeltaRLabTimesPt->setRange(0., 12.);
-  leg1VisInvisDeltaRLabTimesPt->setBins(120);
-
-  RooFormulaVar* leg2VisInvisAngleLabTimesEnergyFormula = 
-    new RooFormulaVar("leg2VisInvisAngleLabTimesEnergyFormula", "@0*@1", RooArgSet(leg2Energy, leg2VisInvisAngleLab));
-  RooRealVar* leg2VisInvisAngleLabTimesEnergy = 
-    static_cast<RooRealVar*>(dataset_all->addColumn(*leg2VisInvisAngleLabTimesEnergyFormula));
-  leg2VisInvisAngleLabTimesEnergy->setRange(0., 12.);
-  leg2VisInvisAngleLabTimesEnergy->setBins(120);
-
-  RooFormulaVar* leg2VisInvisDeltaRLabTimesPtFormula = 
-    new RooFormulaVar("leg2VisInvisDeltaRLabTimesPtFormula", "@0*@1", RooArgSet(leg2Pt, leg2VisInvisDeltaRLab));
-  RooRealVar* leg2VisInvisDeltaRLabTimesPt = 
-    static_cast<RooRealVar*>(dataset_all->addColumn(*leg2VisInvisDeltaRLabTimesPtFormula));
-  leg2VisInvisDeltaRLabTimesPt->setRange(0., 12.);
-  leg2VisInvisDeltaRLabTimesPt->setBins(120);
-
-  RooAbsData* dataset_notNaN = dataset_all->reduce(nanFilter);
-  std::cout << "--> Passing anti-NaN filter = " << dataset_notNaN->numEntries() << std::endl;
-  
+  RooDataSet* dataset_all      = 0;
+  RooAbsData* dataset_notNaN   = 0;
   RooAbsData* dataset_selected = 0;
-  if ( runSelected ) {
+  if ( runFit ) {
+    dataset_all = new RooDataSet("dataset", "datasetset", RooArgSet(variables), RooFit::Import(*dataTree));
+    std::cout << "Processing " << dataset_all->numEntries() << " TTree entries..." << std::endl;
+
+    dataset_all->reduce(nanFilter);
+    std::cout << "--> Passing anti-NaN filter = " << dataset_notNaN->numEntries() << std::endl;
+
     dataset_selected = dataset_notNaN->reduce(visMomCuts);
     std::cout << "--> Passing vis. Momentum Cuts = " << dataset_selected->numEntries() << std::endl;
   }
@@ -1479,25 +1489,29 @@ int main(int argc, const char* argv[])
      ******** Run fit for leg1 with no cuts on visible decay products applied ****
      *****************************************************************************/
 
-    if ( runLeg1 && runAll ) {
-      RooAbsData* dataset_leg1_all = dataset_notNaN->reduce(leg1DecayModeSelection.Data());
-
+    if ( runLeg1 && runAll && runDeltaR ) {
       TString fitManagerName_leg1_dR_all = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg1", "dR", "all");
       if ( fitResults.find(fitManagerName_leg1_dR_all.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg1_dR_all.Data()] = 
-	  new fitManager(&leg1Pt, &leg1VisInvisDeltaRLab, leg1VisInvisDeltaRLabTimesPt, (*decayModeToRun), 
+	  new fitManager(&leg1Pt, &leg1VisInvisDeltaRLab, &leg1VisInvisDeltaRLabTimesPt, (*decayModeToRun), 
 			 Form("%s_%s_%s", "leg1", "dR", "all"), momBinning);
       }
       fitManager* fitManager_leg1_dR_all = fitResults[fitManagerName_leg1_dR_all.Data()];
       TString outputFileName_leg1_dR_all = Form("plots/fitTauDecayKinePlots_%s_leg1_dR_all.eps", decayMode_string.Data());
       fitManager_leg1_dR_all->runPrefit(inputFileName_histograms, 
-					"VisInvisDeltaRLabTimesPt", "all", outputFileName_leg1_dR_all);
-      fitManager_leg1_dR_all->runFit(dataset_leg1_all, outputFileName_leg1_dR_all);
-      
+					"VisInvisDeltaRLabTimesPt", "all", outputFileName_leg1_dR_all);      
+      fitManager_leg1_dR_all->buildFitModel(outputFileName_leg1_dR_all);
+      if ( runFit ) { 
+	RooAbsData* dataset_leg1_all = dataset_notNaN->reduce(leg1DecayModeSelection.Data());
+	fitManager_leg1_dR_all->runFit(dataset_leg1_all, outputFileName_leg1_dR_all);
+      }
+    }
+
+    if ( runLeg1 && runAll && runAngle ) {
       TString fitManagerName_leg1_angle_all = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg1", "angle", "all");
       if ( fitResults.find(fitManagerName_leg1_angle_all.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg1_angle_all.Data()] = 
-	  new fitManager(&leg1Energy, &leg1VisInvisAngleLab, leg1VisInvisAngleLabTimesEnergy, (*decayModeToRun), 
+	  new fitManager(&leg1Energy, &leg1VisInvisAngleLab, &leg1VisInvisAngleLabTimesEnergy, (*decayModeToRun), 
 			 Form("%s_%s_%s", "leg1", "angle", "all"), momBinning);
       }
       fitManager* fitManager_leg1_angle_all = fitResults[fitManagerName_leg1_angle_all.Data()];
@@ -1505,32 +1519,40 @@ int main(int argc, const char* argv[])
 	Form("plots/fitTauDecayKinePlots_%s_leg1_angle_all.eps", decayMode_string.Data());
       fitManager_leg1_angle_all->runPrefit(inputFileName_histograms, 
 					   "VisInvisAngleLabTimesEnergy", "all", outputFileName_leg1_angle_all);
-      fitManager_leg1_angle_all->runFit(dataset_leg1_all, outputFileName_leg1_angle_all);
+      fitManager_leg1_angle_all->buildFitModel(outputFileName_leg1_angle_all);
+      if ( runFit ) {
+	RooAbsData* dataset_leg1_all = dataset_notNaN->reduce(leg1DecayModeSelection.Data());
+	fitManager_leg1_angle_all->runFit(dataset_leg1_all, outputFileName_leg1_angle_all);
+      }
     }
 
     /*****************************************************************************
      ********   Run fit for leg1 with cuts on visible decay products applied  ****
      *****************************************************************************/
 
-    if ( runLeg1 && runSelected ) {
-      RooAbsData* dataset_leg1_selected = dataset_selected->reduce(leg1DecayModeSelection.Data());
-      
+    if ( runLeg1 && runSelected && runDeltaR ) {
       TString fitManagerName_leg1_dR_selected = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg1", "dR", "selected");
       if ( fitResults.find(fitManagerName_leg1_dR_selected.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg1_dR_selected.Data()] = 
-	  new fitManager(&leg1Pt, &leg1VisInvisDeltaRLab, leg1VisInvisDeltaRLabTimesPt, (*decayModeToRun), 
+	  new fitManager(&leg1Pt, &leg1VisInvisDeltaRLab, &leg1VisInvisDeltaRLabTimesPt, (*decayModeToRun), 
 			 Form("%s_%s_%s", "leg1", "dR", "selected2"), momBinning);
       }
       fitManager* fitManager_leg1_dR_selected = fitResults[fitManagerName_leg1_dR_selected.Data()];
       TString outputFileName_leg1_dR_selected = Form("plots/fitTauDecayKinePlots_%s_leg1_dR_selected.eps", decayMode_string.Data());
       fitManager_leg1_dR_selected->runPrefit(inputFileName_histograms, 
 					     "VisInvisDeltaRLabTimesPt", "selected2", outputFileName_leg1_dR_selected);
-      fitManager_leg1_dR_selected->runFit(dataset_leg1_selected, outputFileName_leg1_dR_selected);
-      
+      fitManager_leg1_dR_selected->buildFitModel(outputFileName_leg1_dR_selected);
+      if ( runFit ) {
+	RooAbsData* dataset_leg1_selected = dataset_selected->reduce(leg1DecayModeSelection.Data());
+	fitManager_leg1_dR_selected->runFit(dataset_leg1_selected, outputFileName_leg1_dR_selected);
+      }
+    }
+
+    if ( runLeg1 && runSelected && runAngle ) {
       TString fitManagerName_leg1_angle_selected = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg1", "angle", "selected");
       if ( fitResults.find(fitManagerName_leg1_angle_selected.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg1_angle_selected.Data()] = 
-	  new fitManager(&leg1Energy, &leg1VisInvisAngleLab, leg1VisInvisAngleLabTimesEnergy, (*decayModeToRun), 
+	  new fitManager(&leg1Energy, &leg1VisInvisAngleLab, &leg1VisInvisAngleLabTimesEnergy, (*decayModeToRun), 
 			 Form("%s_%s_%s", "leg1", "angle", "selected2"), momBinning);
       }
       fitManager* fitManager_leg1_angle_selected = fitResults[fitManagerName_leg1_angle_selected.Data()];
@@ -1538,32 +1560,40 @@ int main(int argc, const char* argv[])
 	Form("plots/fitTauDecayKinePlots_%s_leg1_angle_selected.eps", decayMode_string.Data());
       fitManager_leg1_angle_selected->runPrefit(inputFileName_histograms, 
 						"VisInvisAngleLabTimesEnergy", "selected2", outputFileName_leg1_angle_selected);
-      fitManager_leg1_angle_selected->runFit(dataset_leg1_selected, outputFileName_leg1_angle_selected);
+      fitManager_leg1_angle_selected->buildFitModel(outputFileName_leg1_angle_selected);
+      if ( runFit ) {
+	RooAbsData* dataset_leg1_selected = dataset_selected->reduce(leg1DecayModeSelection.Data());
+	fitManager_leg1_angle_selected->runFit(dataset_leg1_selected, outputFileName_leg1_angle_selected);
+      }
     }
 
     /*****************************************************************************
      ******** Run fit for leg2 with no cuts on visible decay products applied ****
      *****************************************************************************/
 
-    if ( runLeg2 && runAll ) {
-      RooAbsData* dataset_leg2_all = dataset_notNaN->reduce(leg2DecayModeSelection.Data());
-      
+    if ( runLeg2 && runAll && runDeltaR ) {
       TString fitManagerName_leg2_dR_all = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg2", "dR", "all");
       if ( fitResults.find(fitManagerName_leg2_dR_all.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg2_dR_all.Data()] = 
-	  new fitManager(&leg2Pt, &leg2VisInvisDeltaRLab, leg2VisInvisDeltaRLabTimesPt, (*decayModeToRun), 
+	  new fitManager(&leg2Pt, &leg2VisInvisDeltaRLab, &leg2VisInvisDeltaRLabTimesPt, (*decayModeToRun), 
 			 Form("%s_%s_%s", "leg2", "dR", "all"), momBinning);
       }
       fitManager* fitManager_leg2_dR_all = fitResults[fitManagerName_leg2_dR_all.Data()];
       TString outputFileName_leg2_dR_all = Form("plots/fitTauDecayKinePlots_%s_leg2_dR_all.eps", decayMode_string.Data());
       fitManager_leg2_dR_all->runPrefit(inputFileName_histograms, 
 					"VisInvisDeltaRLabTimesPt", "all", outputFileName_leg2_dR_all);
-      fitManager_leg2_dR_all->runFit(dataset_leg2_all, outputFileName_leg2_dR_all);
-      
+      fitManager_leg2_dR_all->buildFitModel(outputFileName_leg2_dR_all);
+      if ( runFit ) {
+	RooAbsData* dataset_leg2_all = dataset_notNaN->reduce(leg2DecayModeSelection.Data());
+	fitManager_leg2_dR_all->runFit(dataset_leg2_all, outputFileName_leg2_dR_all);
+      }
+    }
+
+    if ( runLeg2 && runAll && runAngle ) {    
       TString fitManagerName_leg2_angle_all = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg2", "angle", "all");
       if ( fitResults.find(fitManagerName_leg2_angle_all.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg2_angle_all.Data()] = 
-	  new fitManager(&leg2Energy, &leg2VisInvisAngleLab, leg2VisInvisAngleLabTimesEnergy, (*decayModeToRun), 
+	  new fitManager(&leg2Energy, &leg2VisInvisAngleLab, &leg2VisInvisAngleLabTimesEnergy, (*decayModeToRun), 
 			 Form("%s_%s_%s", "leg2", "angle", "all"), momBinning);
       }
       fitManager* fitManager_leg2_angle_all = fitResults[fitManagerName_leg2_angle_all.Data()];
@@ -1571,32 +1601,40 @@ int main(int argc, const char* argv[])
 	Form("plots/fitTauDecayKinePlots_%s_leg2_angle_all.eps", decayMode_string.Data());
       fitManager_leg2_angle_all->runPrefit(inputFileName_histograms, 
 					   "VisInvisAngleLabTimesEnergy", "all", outputFileName_leg2_angle_all);
-      fitManager_leg2_angle_all->runFit(dataset_leg2_all, outputFileName_leg2_angle_all);
+      fitManager_leg2_angle_all->buildFitModel(outputFileName_leg2_angle_all);
+      if ( runFit ) {
+	RooAbsData* dataset_leg2_all = dataset_notNaN->reduce(leg2DecayModeSelection.Data());
+	fitManager_leg2_angle_all->runFit(dataset_leg2_all, outputFileName_leg2_angle_all);
+      }
     }
     
     /*****************************************************************************
      ********   Run fit for leg2 with cuts on visible decay products applied  ****
      *****************************************************************************/
 
-    if ( runLeg2 && runSelected ) {
-      RooAbsData* dataset_leg2_selected = dataset_selected->reduce(leg2DecayModeSelection.Data());
-      
+    if ( runLeg2 && runSelected && runDeltaR ) {
       TString fitManagerName_leg2_dR_selected = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg2", "dR", "selected");
       if ( fitResults.find(fitManagerName_leg2_dR_selected.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg2_dR_selected.Data()] = 
-	  new fitManager(&leg2Pt, &leg2VisInvisDeltaRLab, leg2VisInvisDeltaRLabTimesPt, (*decayModeToRun), 
+	  new fitManager(&leg2Pt, &leg2VisInvisDeltaRLab, &leg2VisInvisDeltaRLabTimesPt, (*decayModeToRun), 
 			 Form("%s_%s_%s", "leg2", "dR", "selected2"), momBinning);
       }
       fitManager* fitManager_leg2_dR_selected = fitResults[fitManagerName_leg2_dR_selected.Data()];
       TString outputFileName_leg2_dR_selected = Form("plots/fitTauDecayKinePlots_%s_leg2_dR_selected.eps", decayMode_string.Data());
       fitManager_leg2_dR_selected->runPrefit(inputFileName_histograms, 
 					     "VisInvisDeltaRLabTimesPt", "selected2", outputFileName_leg2_dR_selected);
-      fitManager_leg2_dR_selected->runFit(dataset_leg2_selected, outputFileName_leg2_dR_selected);
-      
+      fitManager_leg2_dR_selected->buildFitModel(outputFileName_leg2_dR_selected);
+      if ( runFit ) {
+	RooAbsData* dataset_leg2_selected = dataset_selected->reduce(leg2DecayModeSelection.Data());
+	fitManager_leg2_dR_selected->runFit(dataset_leg2_selected, outputFileName_leg2_dR_selected);
+      }
+    }
+     
+    if ( runLeg2 && runSelected && runAngle ) {
       TString fitManagerName_leg2_angle_selected = Form("%s_%s_%s_%s", decayMode_string.Data(), "leg2", "angle", "selected");
       if ( fitResults.find(fitManagerName_leg2_angle_selected.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg2_angle_selected.Data()] = 
-	  new fitManager(&leg2Energy, &leg2VisInvisAngleLab, leg2VisInvisAngleLabTimesEnergy, (*decayModeToRun), 
+	  new fitManager(&leg2Energy, &leg2VisInvisAngleLab, &leg2VisInvisAngleLabTimesEnergy, (*decayModeToRun), 
 			 Form("%s_%s_%s", "leg2", "angle", "selected2"), momBinning);
       }
       fitManager* fitManager_leg2_angle_selected = fitResults[fitManagerName_leg2_angle_selected.Data()];
@@ -1604,7 +1642,11 @@ int main(int argc, const char* argv[])
 	Form("plots/fitTauDecayKinePlots_%s_leg2_angle_selected.eps", decayMode_string.Data());
       fitManager_leg2_angle_selected->runPrefit(inputFileName_histograms, 
 						"VisInvisAngleLabTimesEnergy", "selected2", outputFileName_leg2_angle_selected);
-      fitManager_leg2_angle_selected->runFit(dataset_leg2_selected, outputFileName_leg2_angle_selected);
+      fitManager_leg2_angle_selected->buildFitModel(outputFileName_leg2_angle_selected);
+      if ( runFit ) {
+	RooAbsData* dataset_leg2_selected = dataset_selected->reduce(leg2DecayModeSelection.Data());
+	fitManager_leg2_angle_selected->runFit(dataset_leg2_selected, outputFileName_leg2_angle_selected);
+      }
     }
 
 //--- write results of prefit to ROOT file
@@ -1620,15 +1662,18 @@ int main(int argc, const char* argv[])
 	  prefitResult != fitResults.end(); ++prefitResult ) {
       
       if ( !prefitResult->second ) continue;
+
+      std::cout << "writing prefitResult, label = " << prefitResult->second->label_ 
+		<< " to file = " << outputFileName_prefit.Data() << "..." << std::endl;
       
-      if      ( prefitResult->second->label_.Contains("_dR_")       && 
-		prefitResult->second->label_.Contains("_all_")      ) dirVisInvisDeltaRLab_all->cd();
-      else if ( prefitResult->second->label_.Contains("_angle_")    && 
-		prefitResult->second->label_.Contains("_all_")      ) dirVisInvisAngleLab_all->cd();
-      else if ( prefitResult->second->label_.Contains("_dR_")       && 
-		prefitResult->second->label_.Contains("_selected_") ) dirVisInvisDeltaRLab_selected->cd();
-      else if ( prefitResult->second->label_.Contains("_angle_")    && 
-		prefitResult->second->label_.Contains("_selected_") ) dirVisInvisAngleLab_selected->cd();
+      if      ( prefitResult->second->label_.Contains("_dR_")      && 
+		prefitResult->second->label_.Contains("_all")      ) dirVisInvisDeltaRLab_all->cd();
+      else if ( prefitResult->second->label_.Contains("_angle_")   && 
+		prefitResult->second->label_.Contains("_all")      ) dirVisInvisAngleLab_all->cd();
+      else if ( prefitResult->second->label_.Contains("_dR_")      && 
+		prefitResult->second->label_.Contains("_selected") ) dirVisInvisDeltaRLab_selected->cd();
+      else if ( prefitResult->second->label_.Contains("_angle_")   && 
+		prefitResult->second->label_.Contains("_selected") ) dirVisInvisAngleLab_selected->cd();
       else assert(0);
       
       prefitResult->second->prefitResultGMean_->Write();
@@ -1645,13 +1690,15 @@ int main(int argc, const char* argv[])
     }
     delete outputFile_prefit;
     
-    TString outputFileName_fit = Form("fitTauDecayKinePlots_%s%s.txt", decayMode_string.Data(), selection_string.Data());
-    ostream* outputFile_fit = new std::ofstream(outputFileName_fit.Data(), std::ios::out);
-    for ( std::map<std::string, fitManager*>::iterator fitResult = fitResults.begin();
-	  fitResult != fitResults.end(); ++fitResult ) {
-      fitResult->second->writeFitResults(*outputFile_fit, fitResult->second->label_);
+    if ( runFit ) {
+      TString outputFileName_fit = Form("fitTauDecayKinePlots_%s%s.txt", decayMode_string.Data(), selection_string.Data());
+      ostream* outputFile_fit = new std::ofstream(outputFileName_fit.Data(), std::ios::out);
+      for ( std::map<std::string, fitManager*>::iterator fitResult = fitResults.begin();
+	    fitResult != fitResults.end(); ++fitResult ) {
+	fitResult->second->writeFitResults(*outputFile_fit, fitResult->second->label_);
+      }
+      delete outputFile_fit;
     }
-    delete outputFile_fit;
   }
 
   delete dataTree;

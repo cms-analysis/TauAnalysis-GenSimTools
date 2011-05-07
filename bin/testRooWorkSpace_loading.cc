@@ -24,7 +24,7 @@
 int main(int argc, const char* argv[])
 {
   if ( argc < 6 ) {
-    std::cerr << "Usage: ./testRooWorkSpace_loading inputFileName wsName pdfName momName sepName" << std::endl;
+    std::cerr << "Usage: ./testRooWorkSpace_loading inputFileName wsName pdfName momName sepTimesMomName" << std::endl;
     return 1;
   }
 
@@ -38,8 +38,8 @@ int main(int argc, const char* argv[])
   std::cout << " pdfName = " << pdfName.Data() << std::endl;
   TString momName = argv[4];
   std::cout << " momName = " << momName.Data() << std::endl;
-  TString sepName = argv[5];
-  std::cout << " sepName = " << sepName.Data() << std::endl;
+  TString sepTimesMomName = argv[5];
+  std::cout << " sepTimesMomName = " << sepTimesMomName.Data() << std::endl;
   TString inputFileName_ws_base = inputFileName_ws;
   if ( inputFileName_ws_base.Last('/') != kNPOS ) inputFileName_ws_base.Replace(0, inputFileName_ws_base.Last('/') + 1, "", 0);
   TString outputFileName = Form("testRooWorkSpace_loading_%s", inputFileName_ws_base.Data());
@@ -53,14 +53,17 @@ int main(int argc, const char* argv[])
   std::cout << "--> ws = " << ws << std::endl;
   //ws->Print();
 
-  RooAbsPdf* model = ws->pdf(pdfName.Data());
-  std::cout << "--> model = " << model << std::endl;
-
   RooRealVar* mom = ws->var(momName.Data());
   std::cout << "--> mom = " << mom << std::endl;
 
-  RooRealVar* sep = ws->var(sepName.Data());
-  std::cout << "--> sep = " << sep << std::endl;
+  RooRealVar* sepTimesMom = ws->var(sepTimesMomName.Data());
+  std::cout << "--> sepTimesMom  = " << sepTimesMom << std::endl;
+
+  TauDecayKinePdf* model = dynamic_cast<TauDecayKinePdf*>(ws->pdf(pdfName.Data()));
+  std::cout << "--> model = " << model << std::endl;
+  model->print(std::cout);
+
+  TauDecayKinePdf model_cloned(*model);
 
   TString inputFileName_histograms = "makeTauDecayKinePlots.root";
   
@@ -87,7 +90,8 @@ int main(int argc, const char* argv[])
   TFile* inputFile_histograms = new TFile(inputFileName_histograms.Data());
 
   std::vector<double> momTestValues;
-  momTestValues.push_back(15.5);
+  if ( decayMode == "Electron_Muon" ) momTestValues.push_back(15.5);
+  else                                momTestValues.push_back(20.5);
   momTestValues.push_back(25.5);
   momTestValues.push_back(45.5);
   momTestValues.push_back(75.5);
@@ -103,17 +107,25 @@ int main(int argc, const char* argv[])
 
   for ( std::vector<double>::const_iterator momTestValue = momTestValues.begin();
 	momTestValue != momTestValues.end(); ++momTestValue ) {
+    std::cout << "testing " << mom->GetName() << " = " << (*momTestValue) << ":" << std::endl;
+
     mom->setVal(*momTestValue);
 
-    RooDataSet* toyData = model->generate(*sep, numToys); 
+    for ( double sepTimesMomTestValue = 0.5; sepTimesMomTestValue <= 11.5; sepTimesMomTestValue += 1.0 ) {      
+      sepTimesMom->setVal(sepTimesMomTestValue);
+      std::cout << sepTimesMom->GetName() << " = " << sepTimesMomTestValue << ":" 
+		<< " " << model->GetName() << " = " << model_cloned.getVal() << std::endl;
+    }
+    
+    RooDataSet* toyData = model->generate(*sepTimesMom, numToys); 
     toyData->SetName("toyData");
 
     TString frameTitle = Form("P_{T} = %2.1f GeV", *momTestValue);
-    RooPlot* frame = sep->frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(120));
+    RooPlot* frame = sepTimesMom->frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(120));
 
     TString xAxisTitle = "";
-    if      ( inputDirName.Contains("DeltaR") ) xAxisTitle = "P_{T}^{#tau} #cdot #DeltaR [GeV]";
-    else if ( inputDirName.Contains("Angle")  ) xAxisTitle = "E_{#tau} #cdot Angle [GeV #cdot radians]";
+    if      ( inputDirName.Contains("DeltaR") ) xAxisTitle = "P_{T}^{#tau} * #DeltaR [GeV]";
+    else if ( inputDirName.Contains("Angle")  ) xAxisTitle = "E_{#tau} * Angle [GeV * radians]";
     assert(!xAxisTitle.IsNull());
 
     TAxis* xAxis = frame->GetXaxis();
@@ -126,7 +138,7 @@ int main(int argc, const char* argv[])
 
     toyData->plotOn(frame, RooFit::MarkerStyle(21), RooFit::MarkerColor(2), RooFit::LineColor(2));
 
-    model->plotOn(frame, RooFit::ProjWData(RooArgSet(*sep), *toyData));
+    model->plotOn(frame, RooFit::ProjWData(RooArgSet(*sepTimesMom), *toyData));
     
     frame->Draw();
 

@@ -1,4 +1,5 @@
 <bin   file="makePtBalancePlots.cc" name="makePtBalancePlots">
+  <use   name="TauAnalysis/FittingTools"/>
   <use   name="TauAnalysis/CandidateTools"/>
   <use   name="roofit"/>
   <use   name="root"/>
@@ -11,7 +12,7 @@
   <use   name="rootrflx"/>
   <use   name="boost_program_options"/>
 </bin>
-<bin   file="fitTauDecayKine.cc" name="fitTauDecayKine">
+<bin   file="testPtBalanceDistributions.cc" name="testPtBalanceDistributions">
   <use   name="FWCore/Utilities"/>
   <use   name="TauAnalysis/FittingTools"/>
   <use   name="roofit"/>
@@ -19,8 +20,33 @@
   <use   name="rootrflx"/>
   <use   name="boost_program_options"/>
 </bin>
-<bin   file="testRooWorkSpace_loading.cc" name="testRooWorkSpace_loading">
-  <use   name="TauAnalysis/FittingTools"/>
+<bin file="makePtBalanceDataWorkspace.cc" name="makePtBalanceDataWorkspace">
   <use   name="roofit"/>
   <use   name="root"/>
+  <use   name="rootrflx"/>
+  <use   name="boost_program_options"/>
+</bin>
+
+<bin file="makePtBalanceModelWorkspace.cc" name="makePtBalanceModelWorkspace">
+  <use   name="roofit"/>
+  <use   name="root"/>
+  <use   name="rootrflx"/>
+  <use   name="boost_program_options"/>
+  <use   name="TauAnalysis/FittingTools"/>
+</bin>
+
+<bin file="prefitPtBalancePhiSlice.cc" name="prefitPtBalancePhiSlice" >
+  <use   name="roofit"/>
+  <use   name="root"/>
+  <use   name="rootrflx"/>
+  <use   name="boost_program_options"/>
+  <use   name="TauAnalysis/FittingTools"/>
+</bin>
+
+<bin file="runPtBalancePrefit.cc" name="runPtBalancePrefit" >
+  <use   name="roofit"/>
+  <use   name="root"/>
+  <use   name="rootrflx"/>
+  <use   name="boost_program_options"/>
+  <use   name="TauAnalysis/FittingTools"/>
 </bin>

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <iostream>
+#include <iomanip>
 #include <cmath>
 #include <sstream>
 #include <memory>
@@ -37,6 +38,7 @@
 #include "RooMsgService.h"
 #include "TauAnalysis/FittingTools/interface/RooSkewNormal.h"
 #include "TauAnalysis/FittingTools/interface/RooSmearedIsotropicDecayPdf.h"
+#include "TauAnalysis/FittingTools/interface/RooBifurGeneralizedExp.h"
 
 //#include "TauAnalysis/CandidateTools/interface/NSVfitPtBalancePdfs.h"
 
@@ -60,7 +62,7 @@ class PreFitResult {
     double phiIndex() const { return phiIndex_; }
 
     double getPoint(const std::string& type) const {
-      if (type == "mass") {
+    if (type == "mass") {
         return mass();
       } else
         return phi();
@@ -77,6 +79,29 @@ class PreFitResult {
     int massIndex_;
     int phiIndex_;
 };
+
+void applyFitResultToModel(const RooAbsPdf& model,
+    const RooAbsData& data, const RooFitResult& result) {
+  std::auto_ptr<RooArgSet> parameters(model.getParameters(data));
+  // Loop over the fitted parameters
+  for (int iPar = 0; iPar < result.floatParsFinal().getSize(); ++iPar){
+    std::cout << "Setting result for fit parameter: ";
+    std::string name = result.floatParsFinal().at(iPar)->GetName();
+    std::cout << name << std::endl;
+    RooRealVar* var = dynamic_cast<RooRealVar*>(
+        result.floatParsFinal().at(iPar));
+    assert(var);
+    if (parameters->find(var->GetName())) {
+      std::cout << "The model has it!" << std::endl;
+      RooAbsArg* modelvar = parameters->find(var->GetName());
+      assert(modelvar);
+      RooRealVar* modelRealVar = dynamic_cast<RooRealVar*>(modelvar);
+      assert(modelRealVar);
+      *modelRealVar = var->getVal();
+      modelRealVar->setError(var->getError()*2.0);
+    }
+  }
+}
 
 void plotFitResults(const std::vector<PreFitResult>& results,
     const std::string& variable, TPad* pad, const std::string& prefix) {
@@ -111,12 +136,15 @@ void plotFitResults(const std::vector<PreFitResult>& results,
   }
   BOOST_FOREACH(GraphMap::value_type& graph, graphs) {
     std::stringstream outputName;
-    outputName << prefix << "_" << graph.first << ".png";
+    outputName << prefix << "_" << graph.first;
     pad->cd();
     graph.second.SetMarkerStyle(20);
     graph.second.SetMarkerSize(2);
     graph.second.Draw("ape");
-    pad->SaveAs(outputName.str().c_str());
+    std::string graphicsFileName = outputName.str() + ".png";
+    pad->SaveAs(graphicsFileName.c_str());
+    std::string rootFileName = outputName.str() + ".root";
+    pad->SaveAs(rootFileName.c_str());
   }
 }
 
@@ -183,9 +211,10 @@ int main(int argc, const char *argv[]) {
   RooRealVar* dPhi = static_cast<RooRealVar*>(
       data.addColumn(dPhiFormula));
   dPhi->setRange(0, 1.8);
+  dPhi->setBins(360);
   RooRealVar* scaledMass = static_cast<RooRealVar*>(
       data.addColumn(scaledMassFormula));
-  scaledMass->setRange(0, 6);
+  scaledMass->setRange(-5, 6);
 
   std::cout << "Initial data set has " << data.numEntries() << std::endl;
 
@@ -220,9 +249,6 @@ int main(int argc, const char *argv[]) {
   RooRealVar voigtSigma("voigtSigma", "voigtSigma", 0.2, 0, 10);
   RooRealVar voigtWidth("voigtWidth", "voigtWidth", 0.2, 0, 10);
 
-  RooVoigtian voigtModel("voigt", "voigt", *scaledLeg1Pt,
-      voigtMean, voigtWidth, voigtSigma);
-
   RooRealVar isoSmearedLoc("isoSmearedLoc", "isoSmearedLoc", 1, 0, 10);
   RooRealVar isoSmearedSmear("isoSmearedSmear", "isoSmearedSmear", 0.05, 0, 1);
 
@@ -231,8 +257,11 @@ int main(int argc, const char *argv[]) {
 
   RooRealVar skewNormalLoc("skewNormalLoc", "skewNormalLoc", 1, 0, 10);
   skewNormalLoc.setError(0.2);
+  skewNormalLoc = 0.85;
+  //skewNormalLoc.setConstant(true);
+
   RooRealVar skewNormalScale("skewNormalScale", "skewNormalScale", 0.1, 1e-6, 10);
-  RooRealVar skewNormalSkew("skewNormalSkew", "skewNormalSkew", 0.1, -10, 10);
+  RooRealVar skewNormalSkew("skewNormalSkew", "skewNormalSkew", 0.1, -30, 30);
 
   RooSkewNormal skewNormalModel("skewNormal", "skewNormal",
       *scaledLeg1Pt, skewNormalLoc, skewNormalScale, skewNormalSkew);
@@ -279,7 +308,8 @@ int main(int argc, const char *argv[]) {
   RooRealVar positiveOhPoint2("positiveOhPoint2", "positiveOhPoint2", 0.2, 0., 5.);
   positiveOhPoint2.setConstant(true);
 
-  RooRealVar skewNormalRelPointiness("skewPoint", "skewPoint", 0.5, 0.01, 0.7);
+  // was 0.7
+  RooRealVar skewNormalRelPointiness("skewPoint", "skewPoint", 0.5, 0.01, 0.9);
 
   RooFormulaVar skewNormal2Scale("skewNormal2Scale", "skewNormal2Scale",
       "@0*@1", RooArgList(skewNormalRelPointiness, skewNormalScale));
@@ -293,11 +323,18 @@ int main(int argc, const char *argv[]) {
   RooSkewNormal skewNormal2("skewNorm2", "skewNorm2",
       *scaledLeg1Pt, skewNormalLoc, skewNormal2Scale, skewNormalSkew);
 
-  RooRealVar doubleSkewMix("doubleSkewMix", "doubleSkewMix", 0.1, 0, 0.5);
-  RooAddPdf skewNormPlusSkewNormModel("skewNormAndSkewNorm", "skewNormAndSkewNorm",
-      //skewNormal2, skewNormalModel, doubleSkewMix);
-      skewNormalModel, skewNormal2, doubleSkewMix);
+  // Voigtian
+  RooVoigtian voigtModel("voigt", "voigt", *scaledLeg1Pt,
+      skewNormalLoc, voigtWidth, voigtSigma);
 
+  // was 0.9
+  RooRealVar doubleSkewMix("doubleSkewMix", "doubleSkewMix", 0.1, 0, 0.99);
+  RooAddPdf skewNormPlusSkewNormModel("skewNormAndSkewNorm", "skewNormAndSkewNorm",
+      skewNormal2, skewNormalModel, doubleSkewMix);
+      //skewNormalModel, skewNormal2, doubleSkewMix);
+      //voigtModel, skewNormalModel, doubleSkewMix);
+
+  // Actually prefer skinny skew
   RooExponential preferFatSkew("fatSkewConstraint",
       "fatSkewConstraint", doubleSkewMix, negativeOne);
 
@@ -310,13 +347,26 @@ int main(int argc, const char *argv[]) {
         preferFatSkew,
         skewNormPlusSkewNormModel));
 
+  RooRealVar leftExp("leftExp", "leftExp", 0.001, 0, 2);
+  RooRealVar leftGauss("leftGauss", "leftGauss", 0.1, 0, 2);
+  RooRealVar rightExp("rightExp", "rightExp", 0.001, 0, 2);
+  RooRealVar rightGauss("rightGauss", "rightGauss", 0.1, 0, 2);
+  RooRealVar pivot("pivot", "pivot", 1.0, 0.1, 6);
+  pivot.setConstant(true);
+
+  RooBifurGeneralizedExp bifurGeneral(
+      "bifurGen", "bifurGen",
+      *scaledLeg1Pt, pivot, leftExp, leftGauss,
+      rightExp, rightGauss);
+
   std::cout << "value is: " << skewedNormalPow.getVal() << std::endl;
 
   std::vector<RooAbsPdf*> models;
   //models.push_back(&skewNormalModel);
   //models.push_back(&skewNormPlusGaussModel);
   //models.push_back(&skewNormAndGaussConstrained);
-  models.push_back(&doubleSkewConstrained);
+  //models.push_back(&doubleSkewConstrained);
+  models.push_back(&bifurGeneral);
   //models.push_back(&skewNormPlusIsoSmearModel);
   //models.push_back(&skewedNormalPow);
   //models.push_back(&logNormalModel); // worse than skew normal
@@ -324,132 +374,187 @@ int main(int argc, const char *argv[]) {
   //models.push_back(&voigtModel);
   //
 
+
+
   std::cout << "Doing slices" << std::endl;
 
-  size_t nPhiSlices = 8;
+  size_t nPhiSlices = 18;
   double endPhi = 1.8;
-  size_t nMassSlices = 10;
-  double startMass = 100;
-  double endMass = 300;
+  size_t nMassSlices = 45;
+  double startMass = 55;
+  double endMass = 505;
+  nPhiSlices = 3;
+  nMassSlices = 2;
+  startMass = 140;
+  endMass = 160;
 
   RooRealVar& observable = *scaledLeg1Pt;
 
-  // Keyed by model name
-  std::map<std::string, std::vector<PreFitResult> > fitResults;
-  BOOST_FOREACH(RooAbsPdf* model, models) {
-    fitResults[model->GetName()] = std::vector<PreFitResult>();
-  }
+  for (size_t iType = 1; iType < 2; ++iType) {
+    RooAbsData* dataToFit = (iType == 0) ? selectedDataLeg1High : selectedDataLeg2High;
+    std::string dataTypeName = (iType == 0) ? "type1" : "type2";
+    std::cout << " Fitting " << dataTypeName << std::endl;
+    // Keyed by model name
+    std::map<std::string, std::vector<PreFitResult> > fitResults;
 
-  for (size_t iPhi = 0; iPhi < nPhiSlices; ++iPhi) {
-    double phiSliceSize = endPhi/nPhiSlices;
-    double minPhi = phiSliceSize*iPhi;
-    double maxPhi = phiSliceSize*(iPhi+1);
-    double nominalPhi = minPhi + (maxPhi - minPhi)*0.5;
-
-    /*
-       skewNormalLoc = 1;
-       skewNormalLoc.setError(0.2);
-       skewNormalScale = 0.1;
-       skewNormalSkew = 2;
-       */
-
-    std::stringstream phiCut;
-    phiCut << minPhi << " < dPhi && dPhi < " << maxPhi;
-
-    std::stringstream phiRangeStr;
-    phiRangeStr << "(" << minPhi << " - " << maxPhi << ")";
-
-    std::auto_ptr<RooAbsData> phiSliceData(selectedDataLeg1High->reduce(
-          RooArgSet(observable, *dPhi, resonanceMass), phiCut.str().c_str()));
-
-    std::cout << "Initialized phi slice " << iPhi
-      << " (" << minPhi << " - " << maxPhi << ") with "
-      << phiSliceData->numEntries() << " entries." << std::endl;
-
-    for (size_t iMass = 0; iMass < nMassSlices; ++iMass) {
-      double massSliceSize = (endMass - startMass)*1.0/nMassSlices;
-      double minMass = startMass + massSliceSize*iMass;
-      double maxMass = startMass + massSliceSize*(iMass+1);
-      double nominalMass = minMass + (maxMass - minMass)*0.5;
-
-      std::stringstream massCut;
-      massCut << minMass << " < resonanceMass &&  resonanceMass < "
-        << maxMass;
-
-      std::auto_ptr<RooAbsData> massSliceData(phiSliceData->reduce(
-            RooArgSet(observable, resonanceMass), massCut.str().c_str()));
-
-      std::stringstream massRangeStr;
-      massRangeStr << "(" << minMass << " - " << maxMass << ")";
-
-      std::cout << "Initialized mass slice " << iMass
-        << massRangeStr.str() << " with "
-        << massSliceData->numEntries() << " entries." << std::endl;
-
-      std::cout << "Binning histogram" << std::endl;
-      RooDataHist phiMassPointData("phiMassPoint", "phiMassPoint",
-        RooArgSet(observable), *massSliceData);
-
-      std::cout << "Fitting all models" << std::endl;
-      std::auto_ptr<RooPlot> frame(observable.frame(Range(0, 4.)));
-      phiMassPointData.plotOn(frame.get());
-
-      int iColor = 0;
-      BOOST_FOREACH(RooAbsPdf* model, models) {
-        iColor += 2;
-        std::cout << "Fitting model: " << model->GetName() << std::endl;
-        RooFitResult* result = model->fitTo(
-            *massSliceData, NumCPU(4), Verbose(true), Save(true));
-
-        fitResults[model->GetName()].push_back(
-            PreFitResult(result, "", nominalMass, nominalPhi,
-              iMass, iPhi));
-
-        model->plotOn(frame.get(), LineColor(kRed + iColor));
-        model->plotOn(frame.get(), LineColor(kBlue + iColor), Components("skewNormal"));
-      }
-
-      std::stringstream plotTitle;
-      plotTitle << " Leg1Pt for mass " << massRangeStr.str()
-        << " and #Delta#phi " << phiRangeStr.str();
-
-      frame->SetTitle(plotTitle.str().c_str());
-      frame->Draw();
-      std::stringstream sliceFileName;
-      sliceFileName << "model_test_phi_" << iPhi << "_mass_" << iMass << ".png";
-      canvas.SaveAs(sliceFileName.str().c_str());
-    }
-  }
-
-  // Now plot the graphs of all the variables
-  BOOST_FOREACH(RooAbsPdf* model, models) {
-    std::vector<PreFitResult> results = fitResults[model->GetName()];
-    // Make mass slice plots
-    for (size_t iMass = 0; iMass < nMassSlices; ++iMass) {
-      std::vector<PreFitResult> massSliceResults;
-      BOOST_FOREACH(const PreFitResult& result, results) {
-        if (result.massIndex() == iMass) {
-          massSliceResults.push_back(result);
-        }
-      }
-      std::stringstream prefix;
-      prefix << model->GetName() << "_mass_slice_" << iMass;
-      plotFitResults(massSliceResults, "phi", &canvas, prefix.str());
+    BOOST_FOREACH(RooAbsPdf* model, models) {
+      fitResults[model->GetName()] = std::vector<PreFitResult>();
     }
 
-    // Make phi slice plots
     for (size_t iPhi = 0; iPhi < nPhiSlices; ++iPhi) {
-      std::vector<PreFitResult> phiSliceResults;
-      BOOST_FOREACH(const PreFitResult& result, results) {
-        if (result.phiIndex() == iPhi) {
-          phiSliceResults.push_back(result);
+      double phiSliceSize = endPhi/nPhiSlices;
+      double minPhi = phiSliceSize*iPhi;
+      double maxPhi = phiSliceSize*(iPhi+1);
+      double nominalPhi = minPhi + (maxPhi - minPhi)*0.5;
+
+      /*
+         skewNormalLoc = 1;
+         skewNormalLoc.setError(0.2);
+         skewNormalScale = 0.1;
+         skewNormalSkew = 2;
+         */
+
+      std::stringstream phiCut;
+      phiCut << minPhi << " < dPhi && dPhi < " << maxPhi;
+
+      std::stringstream phiRangeStr;
+      phiRangeStr << "(" << minPhi << " - " << maxPhi << ")";
+
+      std::auto_ptr<RooAbsData> phiSliceData(dataToFit->reduce(
+            RooArgSet(observable, *dPhi, resonanceMass), phiCut.str().c_str()));
+
+      std::cout << "Initialized phi slice " << iPhi
+        << " (" << minPhi << " - " << maxPhi << ") with "
+        << phiSliceData->numEntries() << " entries." << std::endl;
+
+      for (size_t iMass = 0; iMass < nMassSlices; ++iMass) {
+        double massSliceSize = (endMass - startMass)*1.0/nMassSlices;
+        double minMass = startMass + massSliceSize*iMass;
+        double maxMass = startMass + massSliceSize*(iMass+1);
+        double nominalMass = minMass + (maxMass - minMass)*0.5;
+
+        std::stringstream massCut;
+        massCut << minMass << " < resonanceMass &&  resonanceMass < "
+          << maxMass;
+
+        std::auto_ptr<RooAbsData> massSliceData(phiSliceData->reduce(
+              RooArgSet(observable, resonanceMass), massCut.str().c_str()));
+
+        std::stringstream massRangeStr;
+        massRangeStr << "(" << minMass << " - " << maxMass << ")";
+
+        std::cout << "Initialized mass slice " << iMass
+          << massRangeStr.str() << " with "
+          << massSliceData->numEntries() << " entries." << std::endl;
+
+        if (!massSliceData->numEntries())
+          continue;
+
+        std::cout << "Binning histogram" << std::endl;
+        RooDataHist phiMassPointData("phiMassPoint", "phiMassPoint",
+            RooArgSet(observable, resonanceMass), *massSliceData);
+
+        std::cout << "Fitting all models" << std::endl;
+        std::auto_ptr<RooPlot> frame(observable.frame(Range(0, 4.)));
+        phiMassPointData.plotOn(frame.get());
+
+        int iColor = 0;
+        BOOST_FOREACH(RooAbsPdf* model, models) {
+          iColor += 2;
+          // Find the closest previous fit by distance in iPhi-iMass space
+          std::vector<PreFitResult>& previousFits = fitResults[model->GetName()];
+          if (previousFits.size()) {
+            double bestDistance = 100000000000;
+            const PreFitResult* bestFit = NULL;
+            BOOST_FOREACH(const PreFitResult& previousFit, previousFits) {
+              double massDiff = 1.0*iMass - 1.0*previousFit.massIndex();
+              double phiDiff = 1.0*iPhi - 1.0*previousFit.phiIndex();
+              double totalDiff = massDiff*massDiff + phiDiff*phiDiff;
+              if (!bestFit || totalDiff < bestDistance) {
+                bestFit = &previousFit;
+                bestDistance = totalDiff;
+              }
+            }
+            assert(bestFit);
+            std::cout << "Applying previous fit parameters" << std::endl;
+            applyFitResultToModel(*model, *massSliceData, *(bestFit->result()));
+          }
+
+          std::cout << "Fitting model: " << model->GetName() << std::endl;
+          RooFitResult* result = model->fitTo(
+              //phiMassPointData,
+              *massSliceData,
+              NumCPU(4),
+              //Verbose(true),
+              Save(true));
+
+          fitResults[model->GetName()].push_back(
+              PreFitResult(result, "", nominalMass, nominalPhi,
+                iMass, iPhi));
+
+          model->plotOn(frame.get(), LineColor(kRed + iColor));
+          model->plotOn(frame.get(), LineColor(kBlue + iColor), Components("skewNormal"));
         }
+
+        std::stringstream plotTitle;
+        plotTitle << " Leg1Pt for mass " << massRangeStr.str()
+          << " and #Delta#phi " << phiRangeStr.str();
+
+        canvas.SetLogy(true);
+        frame->SetTitle(plotTitle.str().c_str());
+        frame->Draw();
+        std::stringstream sliceFileName;
+        sliceFileName << std::setfill('0');
+        sliceFileName << "model_test_phi_" << dataTypeName << "_"
+          << std::setw(3) << iPhi << "_mass_"
+          << std::setw(3) << iMass;
+        std::string logFilename = sliceFileName.str() + "_log.png";
+        canvas.SaveAs(logFilename.c_str());
+        canvas.SetLogy(false);
+        canvas.Update();
+        std::string linearFileName = sliceFileName.str() + "_linear.png";
+        canvas.SaveAs(linearFileName.c_str());
+        std::string rootFileName = sliceFileName.str() + ".root";
+        canvas.SaveAs(rootFileName.c_str());
       }
-      std::stringstream prefix;
-      prefix << model->GetName() << "_phi_slice_" << iPhi;
-      plotFitResults(phiSliceResults, "mass", &canvas, prefix.str());
     }
 
+    // Now plot the graphs of all the variables
+    BOOST_FOREACH(RooAbsPdf* model, models) {
+      std::vector<PreFitResult> results = fitResults[model->GetName()];
+      // Make mass slice plots
+      for (size_t iMass = 0; iMass < nMassSlices; ++iMass) {
+        std::vector<PreFitResult> massSliceResults;
+        BOOST_FOREACH(const PreFitResult& result, results) {
+          if (result.massIndex() == iMass) {
+            massSliceResults.push_back(result);
+          }
+        }
+        std::stringstream prefix;
+        prefix << std::setfill('0') ;
+        prefix << model->GetName()
+          << "_type_" << dataTypeName
+          << "_mass_slice_" << std::setw(3) << iMass;
+        plotFitResults(massSliceResults, "phi", &canvas, prefix.str());
+      }
+
+      // Make phi slice plots
+      for (size_t iPhi = 0; iPhi < nPhiSlices; ++iPhi) {
+        std::vector<PreFitResult> phiSliceResults;
+        BOOST_FOREACH(const PreFitResult& result, results) {
+          if (result.phiIndex() == iPhi) {
+            phiSliceResults.push_back(result);
+          }
+        }
+        std::stringstream prefix;
+        prefix << std::setfill('0');
+        prefix << model->GetName()
+          << "_type_" << dataTypeName
+          << "_phi_slice_" << std::setw(3) << iPhi;
+        plotFitResults(phiSliceResults, "mass", &canvas, prefix.str());
+      }
+
+    }
   }
 
   return 0;

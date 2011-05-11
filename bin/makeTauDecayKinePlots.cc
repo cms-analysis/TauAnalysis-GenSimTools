@@ -142,6 +142,21 @@ struct plotEntryAllMomBins
     }
   }
 
+  plotEntryOneMomBin* findPlotEntry(double mom)
+  {
+    plotEntryOneMomBin* retVal = 0;
+
+    for ( std::vector<plotEntryOneMomBin*>::iterator plotEntry = plotEntries_.begin();
+	  plotEntry != plotEntries_.end(); ++plotEntry ) {
+      if ( (*plotEntry)->momMin_ <= mom && (*plotEntry)->momMax_ >= mom ) {
+	retVal = (*plotEntry);
+	break;
+      }
+    }
+
+    return retVal;
+  }
+
   void Draw(TCanvas* canvas, const TString& outputFileName, const char* option)
   {
     for ( unsigned iDecayMode = kElectron_Muon; iDecayMode <= kThreeProng1Pi0; ++iDecayMode ) {
@@ -153,22 +168,30 @@ struct plotEntryAllMomBins
       
       TString decayMode_string = getDecayMode_string(iDecayMode);
       
-      unsigned numMomBins = (plotEntries_.size() / 5);
-      for ( unsigned iMomBin = 0; iMomBin < numMomBins; ++iMomBin ) {
-	if ( (iMomBin % 6) == 0 ) {
+      double momMin = plotEntries_.front()->momMin_;
+      double momMax = plotEntries_.back()->momMax_;
+      double momStepSize = 5.;
+      unsigned iPad = 0;
+      for ( double mom = momMin; mom <= momMax; mom += momStepSize ) {
+	if ( (iPad % 6) == 0 ) {
 	  canvas->Clear();
 	  canvas->Divide(2,3);
 	}
 	
-	TVirtualPad* pad = canvas->cd((iMomBin % 6) + 1);
+	TVirtualPad* pad = canvas->cd((iPad % 6) + 1);
 	pad->SetLogy();
-	plotEntries_[5*iMomBin]->Draw(iDecayMode, option);
 	
-	if ( (iMomBin % 6) == 5 ) {
+	plotEntryOneMomBin* plotEntry = findPlotEntry(mom);
+	if ( plotEntry ) plotEntry->Draw(iDecayMode, option);
+	
+	if ( (iPad % 6) == 5 ) {
 	  canvas->Update();
 	  TString outputFileName_i = outputFileName;
-	  outputFileName_i = outputFileName_i.ReplaceAll(".", Form("_%s_page%u.", decayMode_string.Data(), (iMomBin / 6) + 1));
+	  outputFileName_i = outputFileName_i.ReplaceAll(".", Form("_%s_page%u.", decayMode_string.Data(), (iPad / 6) + 1));
 	  canvas->SaveAs(outputFileName_i.Data());
+	  iPad = 0;
+	} else {
+	  ++iPad;
 	}
       }
     }
@@ -205,24 +228,36 @@ void Draw(TCanvas* canvas, plotEntryAllMomBins* plots_all, plotEntryAllMomBins* 
 
     TString decayMode_string = getDecayMode_string(iDecayMode);
 
-    unsigned numMomBins = (plots_all->plotEntries_.size() / 5);
-    for ( unsigned iMomBin = 0; iMomBin < numMomBins; ++iMomBin ) {
-      if ( (iMomBin % 6) == 0 ) {
+    double momMin = plots_all->plotEntries_.front()->momMin_;
+    double momMax = plots_all->plotEntries_.back()->momMax_;
+    double momStepSize = 5.;
+    unsigned iPad = 0;
+    for ( double mom = momMin; mom <= momMax; mom += momStepSize ) {
+      if ( (iPad % 6) == 0 ) {
 	canvas->Clear();
 	canvas->Divide(2,3);
       }
 
-      TVirtualPad* pad = canvas->cd((iMomBin % 6) + 1);
+      TVirtualPad* pad = canvas->cd((iPad % 6) + 1);
       pad->SetLogy();
-      plots_all->plotEntries_[5*iMomBin]->Draw(iDecayMode, option, 1);
-      plots_selected1->plotEntries_[5*iMomBin]->Draw(iDecayMode, TString(option).Append("same"), 4);
-      plots_selected2->plotEntries_[5*iMomBin]->Draw(iDecayMode, TString(option).Append("same"), 2);
 
-      if ( (iMomBin % 6) == 5 ) {
+      plotEntryOneMomBin* plotEntry_all       = plots_all->findPlotEntry(mom);
+      plotEntryOneMomBin* plotEntry_selected1 = plots_selected1->findPlotEntry(mom);
+      plotEntryOneMomBin* plotEntry_selected2 = plots_selected2->findPlotEntry(mom);
+      if ( plotEntry_all && plotEntry_selected1 && plotEntry_selected2 ) {
+	plotEntry_all->Draw(iDecayMode, option, 1);
+	plotEntry_selected1->Draw(iDecayMode, TString(option).Append("same"), 4);
+	plotEntry_selected2->Draw(iDecayMode, TString(option).Append("same"), 2);
+      }
+
+      if ( (iPad % 6) == 5 ) {
 	canvas->Update();
 	TString outputFileName_i = outputFileName;
-	outputFileName_i = outputFileName_i.ReplaceAll(".", Form("_%s_page%u.", decayMode_string.Data(), (iMomBin / 6) + 1));
+	outputFileName_i = outputFileName_i.ReplaceAll(".", Form("_%s_page%u.", decayMode_string.Data(), (iPad / 6) + 1));
 	canvas->SaveAs(outputFileName_i.Data());
+	iPad = 0;
+      } else {
+	++iPad;
       }
     }
   }
@@ -230,10 +265,14 @@ void Draw(TCanvas* canvas, plotEntryAllMomBins* plots_all, plotEntryAllMomBins* 
 
 int main(int argc, const char* argv[])
 {
-  TString inputFileNames = "/data2/friis/PtBalanceNtupleData_v2/ptBalanceData_*.root";
-  //TString inputFileNames = "/data2/friis/PtBalanceNtupleData_v2/ptBalanceData_mass_200_ggAH.root";
+  printTimeStamp("<makeTauDecayKinePlots::main (begin)>");
 
-  TArrayD momBinning = getBinningMom();
+  TString inputFileNames = "/data2/friis/PtBalanceNtupleData_v5/ptBalanceData_*_ggH.root";
+  //TString inputFileNames = "/data2/friis/PtBalanceNtupleData_v4/ptBalanceData_mass_200_ggAH.root";
+
+  // CV: chose common binning starting at 15 GeV for all tau decay modes
+  TArrayD momBinning_all = getBinningMom("Electron_Muon", "all");
+  TArrayD momBinning_selected = getBinningMom("Electron_Muon", "selected");
   TArrayD sepBinning = getBinningSep();
   TArrayD sepTimesMomBinning = getBinningSepTimesMom();
 
@@ -241,56 +280,56 @@ int main(int argc, const char* argv[])
   TH1::AddDirectory(false); 
 
   plotEntryAllMomBins* plotsGJDeltaRLab_all = 
-    new plotEntryAllMomBins("GJDeltaRLab", "all", momBinning, sepBinning);
+    new plotEntryAllMomBins("GJDeltaRLab", "all", momBinning_all, sepBinning);
   plotEntryAllMomBins* plotsGJAngleLab_all = 
-    new plotEntryAllMomBins("GJAngleLab", "all", momBinning, sepBinning);
+    new plotEntryAllMomBins("GJAngleLab", "all", momBinning_all, sepBinning);
   plotEntryAllMomBins* plotsGJDeltaRLab_selected1 = 
-    new plotEntryAllMomBins("GJDeltaRLab", "selected1", momBinning, sepBinning);
+    new plotEntryAllMomBins("GJDeltaRLab", "selected1", momBinning_selected, sepBinning);
   plotEntryAllMomBins* plotsGJAngleLab_selected1 = 
-    new plotEntryAllMomBins("GJAngleLab", "selected1", momBinning, sepBinning);
+    new plotEntryAllMomBins("GJAngleLab", "selected1", momBinning_selected, sepBinning);
   plotEntryAllMomBins* plotsGJDeltaRLab_selected2 = 
-    new plotEntryAllMomBins("GJDeltaRLab", "selected2", momBinning, sepBinning);
+    new plotEntryAllMomBins("GJDeltaRLab", "selected2", momBinning_selected, sepBinning);
   plotEntryAllMomBins* plotsGJAngleLab_selected2 = 
-    new plotEntryAllMomBins("GJAngleLab", "selected2", momBinning, sepBinning);
+    new plotEntryAllMomBins("GJAngleLab", "selected2", momBinning_selected, sepBinning);
 
   plotEntryAllMomBins* plotsGJDeltaRLabTimesPt_all = 
-    new plotEntryAllMomBins("GJDeltaRLabTimesPt", "all", momBinning, sepTimesMomBinning);
+    new plotEntryAllMomBins("GJDeltaRLabTimesPt", "all", momBinning_all, sepBinning);
   plotEntryAllMomBins* plotsGJAngleLabTimesEnergy_all = 
-    new plotEntryAllMomBins("GJAngleLabTimesEnergy", "all", momBinning, sepTimesMomBinning);
+    new plotEntryAllMomBins("GJAngleLabTimesEnergy", "all", momBinning_all, sepBinning);
   plotEntryAllMomBins* plotsGJDeltaRLabTimesPt_selected1 = 
-    new plotEntryAllMomBins("GJDeltaRLabTimesPt", "selected1", momBinning, sepTimesMomBinning);
+    new plotEntryAllMomBins("GJDeltaRLabTimesPt", "selected1", momBinning_selected, sepBinning);
   plotEntryAllMomBins* plotsGJAngleLabTimesEnergy_selected1 = 
-    new plotEntryAllMomBins("GJAngleLabTimesEnergy", "selected1", momBinning, sepTimesMomBinning);
+    new plotEntryAllMomBins("GJAngleLabTimesEnergy", "selected1", momBinning_selected, sepBinning);
   plotEntryAllMomBins* plotsGJDeltaRLabTimesPt_selected2 = 
-    new plotEntryAllMomBins("GJDeltaRLabTimesPt", "selected2", momBinning, sepTimesMomBinning);
+    new plotEntryAllMomBins("GJDeltaRLabTimesPt", "selected2", momBinning_selected, sepBinning);
   plotEntryAllMomBins* plotsGJAngleLabTimesEnergy_selected2 = 
-    new plotEntryAllMomBins("GJAngleLabTimesEnergy", "selected2", momBinning, sepTimesMomBinning);
+    new plotEntryAllMomBins("GJAngleLabTimesEnergy", "selected2", momBinning_selected, sepBinning);
 
   plotEntryAllMomBins* plotsVisInvisDeltaRLab_all = 
-    new plotEntryAllMomBins("VisInvisDeltaRLab", "all", momBinning, sepBinning);
+    new plotEntryAllMomBins("VisInvisDeltaRLab", "all", momBinning_all, sepBinning);
   plotEntryAllMomBins* plotsVisInvisAngleLab_all = 
-    new plotEntryAllMomBins("VisInvisAngleLab", "all", momBinning, sepBinning);
+    new plotEntryAllMomBins("VisInvisAngleLab", "all", momBinning_all, sepBinning);
   plotEntryAllMomBins* plotsVisInvisDeltaRLab_selected1 = 
-    new plotEntryAllMomBins("VisInvisDeltaRLab", "selected1", momBinning, sepBinning);
+    new plotEntryAllMomBins("VisInvisDeltaRLab", "selected1", momBinning_selected, sepBinning);
   plotEntryAllMomBins* plotsVisInvisAngleLab_selected1 = 
-    new plotEntryAllMomBins("VisInvisAngleLab", "selected1", momBinning, sepBinning);
+    new plotEntryAllMomBins("VisInvisAngleLab", "selected1", momBinning_selected, sepBinning);
   plotEntryAllMomBins* plotsVisInvisDeltaRLab_selected2 = 
-    new plotEntryAllMomBins("VisInvisDeltaRLab", "selected2", momBinning, sepBinning);
+    new plotEntryAllMomBins("VisInvisDeltaRLab", "selected2", momBinning_selected, sepBinning);
   plotEntryAllMomBins* plotsVisInvisAngleLab_selected2 = 
-    new plotEntryAllMomBins("VisInvisAngleLab", "selected2", momBinning, sepBinning);
+    new plotEntryAllMomBins("VisInvisAngleLab", "selected2", momBinning_selected, sepBinning);
 
   plotEntryAllMomBins* plotsVisInvisDeltaRLabTimesPt_all = 
-    new plotEntryAllMomBins("VisInvisDeltaRLabTimesPt", "all", momBinning, sepTimesMomBinning);
+    new plotEntryAllMomBins("VisInvisDeltaRLabTimesPt", "all", momBinning_all, sepBinning);
   plotEntryAllMomBins* plotsVisInvisAngleLabTimesEnergy_all = 
-    new plotEntryAllMomBins("VisInvisAngleLabTimesEnergy", "all", momBinning, sepTimesMomBinning);
+    new plotEntryAllMomBins("VisInvisAngleLabTimesEnergy", "all", momBinning_all, sepBinning);
   plotEntryAllMomBins* plotsVisInvisDeltaRLabTimesPt_selected1 = 
-    new plotEntryAllMomBins("VisInvisDeltaRLabTimesPt", "selected1", momBinning, sepTimesMomBinning);
+    new plotEntryAllMomBins("VisInvisDeltaRLabTimesPt", "selected1", momBinning_selected, sepBinning);
   plotEntryAllMomBins* plotsVisInvisAngleLabTimesEnergy_selected1 = 
-    new plotEntryAllMomBins("VisInvisAngleLabTimesEnergy", "selected1", momBinning, sepTimesMomBinning);
+    new plotEntryAllMomBins("VisInvisAngleLabTimesEnergy", "selected1", momBinning_selected, sepBinning);
   plotEntryAllMomBins* plotsVisInvisDeltaRLabTimesPt_selected2 = 
-    new plotEntryAllMomBins("VisInvisDeltaRLabTimesPt", "selected2", momBinning, sepTimesMomBinning);
+    new plotEntryAllMomBins("VisInvisDeltaRLabTimesPt", "selected2", momBinning_selected, sepBinning);
   plotEntryAllMomBins* plotsVisInvisAngleLabTimesEnergy_selected2 = 
-    new plotEntryAllMomBins("VisInvisAngleLabTimesEnergy", "selected2", momBinning, sepTimesMomBinning);  
+    new plotEntryAllMomBins("VisInvisAngleLabTimesEnergy", "selected2", momBinning_selected, sepBinning);
 
   gROOT->SetBatch(true);
 
@@ -466,13 +505,13 @@ int main(int argc, const char* argv[])
   TCanvas* canvas = new TCanvas("canvas", "canvas", 1, 1, 600, 900);
   canvas->SetFillColor(10);
   canvas->SetBorderSize(2);
-
+/*
   plotsGJDeltaRLab_all->Draw(canvas, "plots/plotsGJDeltaRLab_all.eps", "e1p");
   plotsGJAngleLab_all->Draw(canvas, "plots/plotsGJAngleLab_all.eps", "e1p");
-  //plotsGJDeltaRLab_selected1->Draw(canvas, "plots/plotsGJDeltaRLab_selected1.eps", "e1p");
-  //plotsGJAngleLab_selected1->Draw(canvas, "plots/plotsGJAngleRLab_selected1.eps", "e1p");
-  plotsGJDeltaRLab_selected2->Draw(canvas, "plots/plotsGJDeltaRLab_selected2.eps", "e1p");
-  plotsGJAngleLab_selected2->Draw(canvas, "plots/plotsGJAngleRLab_selected2.eps", "e1p");
+  plotsGJDeltaRLab_selected1->Draw(canvas, "plots/plotsGJDeltaRLab_selected1.eps", "e1p");
+  plotsGJAngleLab_selected1->Draw(canvas, "plots/plotsGJAngleRLab_selected1.eps", "e1p");
+  //plotsGJDeltaRLab_selected2->Draw(canvas, "plots/plotsGJDeltaRLab_selected2.eps", "e1p");
+  //plotsGJAngleLab_selected2->Draw(canvas, "plots/plotsGJAngleRLab_selected2.eps", "e1p");
 
   Draw(canvas, plotsGJDeltaRLab_all,
        plotsGJDeltaRLab_selected1, plotsGJDeltaRLab_selected2, 
@@ -483,10 +522,10 @@ int main(int argc, const char* argv[])
 
   plotsGJDeltaRLabTimesPt_all->Draw(canvas, "plots/plotsGJDeltaRLabTimesPt_all.eps", "e1p");
   plotsGJAngleLabTimesEnergy_all->Draw(canvas, "plots/plotsGJAngleLabTimesEnergy_all.eps", "e1p");
-  //plotsGJDeltaRLabTimesPt_selected1->Draw(canvas, "plots/plotsGJDeltaRLabTimesPt_selected1.eps", "e1p");
-  //plotsGJAngleLabTimesEnergy_selected1->Draw(canvas, "plots/plotsGJAngleRLabTimesEnergy_selected1.eps", "e1p");
-  plotsGJDeltaRLabTimesPt_selected2->Draw(canvas, "plots/plotsGJDeltaRLabTimesPt_selected2.eps", "e1p");
-  plotsGJAngleLabTimesEnergy_selected2->Draw(canvas, "plots/plotsGJAngleRLabTimesEnergy_selected2.eps", "e1p");
+  plotsGJDeltaRLabTimesPt_selected1->Draw(canvas, "plots/plotsGJDeltaRLabTimesPt_selected1.eps", "e1p");
+  plotsGJAngleLabTimesEnergy_selected1->Draw(canvas, "plots/plotsGJAngleRLabTimesEnergy_selected1.eps", "e1p");
+  //plotsGJDeltaRLabTimesPt_selected2->Draw(canvas, "plots/plotsGJDeltaRLabTimesPt_selected2.eps", "e1p");
+  //plotsGJAngleLabTimesEnergy_selected2->Draw(canvas, "plots/plotsGJAngleRLabTimesEnergy_selected2.eps", "e1p");
 
   Draw(canvas, plotsGJDeltaRLabTimesPt_all, 
        plotsGJDeltaRLabTimesPt_selected1, plotsGJDeltaRLabTimesPt_selected2, 
@@ -494,13 +533,13 @@ int main(int argc, const char* argv[])
   Draw(canvas, plotsGJAngleLabTimesEnergy_all, 
        plotsGJAngleLabTimesEnergy_selected1, plotsGJAngleLabTimesEnergy_selected2,
        "plots/plotsGJAngleLabTimesEnergy_all_vs_selected.eps", "hist");
-
+ */
   plotsVisInvisDeltaRLab_all->Draw(canvas, "plots/plotsVisInvisDeltaRLab_all.eps", "e1p");
   plotsVisInvisAngleLab_all->Draw(canvas, "plots/plotsVisInvisAngleLab_all.eps", "e1p");
-  //plotsVisInvisDeltaRLab_selected1->Draw(canvas, "plots/plotsVisInvisDeltaRLab_selected1.eps", "e1p");
-  //plotsVisInvisAngleLab_selected1->Draw(canvas, "plots/plotsVisInvisAngleRLab_selected1.eps", "e1p");
-  plotsVisInvisDeltaRLab_selected2->Draw(canvas, "plots/plotsVisInvisDeltaRLab_selected2.eps", "e1p");
-  plotsVisInvisAngleLab_selected2->Draw(canvas, "plots/plotsVisInvisAngleRLab_selected2.eps", "e1p");
+  plotsVisInvisDeltaRLab_selected1->Draw(canvas, "plots/plotsVisInvisDeltaRLab_selected1.eps", "e1p");
+  plotsVisInvisAngleLab_selected1->Draw(canvas, "plots/plotsVisInvisAngleRLab_selected1.eps", "e1p");
+  //plotsVisInvisDeltaRLab_selected2->Draw(canvas, "plots/plotsVisInvisDeltaRLab_selected2.eps", "e1p");
+  //plotsVisInvisAngleLab_selected2->Draw(canvas, "plots/plotsVisInvisAngleRLab_selected2.eps", "e1p");
 
   Draw(canvas, plotsVisInvisDeltaRLab_all, 
        plotsVisInvisDeltaRLab_selected1, plotsVisInvisDeltaRLab_selected2, 
@@ -511,10 +550,10 @@ int main(int argc, const char* argv[])
 
   plotsVisInvisDeltaRLabTimesPt_all->Draw(canvas, "plots/plotsVisInvisDeltaRLabTimesPt_all.eps", "e1p");
   plotsVisInvisAngleLabTimesEnergy_all->Draw(canvas, "plots/plotsVisInvisAngleLabTimesEnergy_all.eps", "e1p");
-  //plotsVisInvisDeltaRLabTimesPt_selected1->Draw(canvas, "plots/plotsVisInvisDeltaRLabTimesPt_selected1.eps", "e1p");
-  //plotsVisInvisAngleLabTimesEnergy_selected1->Draw(canvas, "plots/plotsVisInvisAngleRLabTimesEnergy_selected1.eps", "e1p");
-  plotsVisInvisDeltaRLabTimesPt_selected2->Draw(canvas, "plots/plotsVisInvisDeltaRLabTimesPt_selected2.eps", "e1p");
-  plotsVisInvisAngleLabTimesEnergy_selected2->Draw(canvas, "plots/plotsVisInvisAngleRLabTimesEnergy_selected2.eps", "e1p");
+  plotsVisInvisDeltaRLabTimesPt_selected1->Draw(canvas, "plots/plotsVisInvisDeltaRLabTimesPt_selected1.eps", "e1p");
+  plotsVisInvisAngleLabTimesEnergy_selected1->Draw(canvas, "plots/plotsVisInvisAngleRLabTimesEnergy_selected1.eps", "e1p");
+  //plotsVisInvisDeltaRLabTimesPt_selected2->Draw(canvas, "plots/plotsVisInvisDeltaRLabTimesPt_selected2.eps", "e1p");
+  //plotsVisInvisAngleLabTimesEnergy_selected2->Draw(canvas, "plots/plotsVisInvisAngleRLabTimesEnergy_selected2.eps", "e1p");
 
   Draw(canvas, plotsVisInvisDeltaRLabTimesPt_all, 
        plotsVisInvisDeltaRLabTimesPt_selected1, plotsVisInvisDeltaRLabTimesPt_selected2, 
@@ -552,4 +591,6 @@ int main(int argc, const char* argv[])
   delete plotsVisInvisAngleLabTimesEnergy_selected1;
   delete plotsVisInvisDeltaRLabTimesPt_selected2;
   delete plotsVisInvisAngleLabTimesEnergy_selected2;
+
+  printTimeStamp("<makeTauDecayKinePlots::main (end)>");
 }

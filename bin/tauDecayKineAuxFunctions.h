@@ -5,6 +5,10 @@
 #include <TArrayD.h>
 #include <TMath.h>
 
+#include <iostream>
+#include <iomanip>
+#include <time.h>
+
 enum { kElectron_Muon, 
        kOneProng0Pi0, kOneProng1Pi0, kOneProng2Pi0, kOneProngGt0Pi0, 
        kThreeProng0Pi0, kThreeProng1Pi0 };
@@ -55,13 +59,17 @@ double encodeDecayMode(int decayMode)
 //-------------------------------------------------------------------------------
 //
 
-TArrayD getBinningMom(const TString& decayMode = "undefined")
+TArrayD getBinningMom(const TString& decayMode = "undefined", const TString& selection = "all")
 {
+  //std::cout << "<getBinningMom>:" << std::endl;
+  //std::cout << " decayMode = " << decayMode.Data() << std::endl;
+  //std::cout << " selection = " << selection.Data() << std::endl;
+
   TArrayD binning;
   
-  double xMin = ( decayMode == "Electron_Muon") ? 15. : 20.;
+  double xMin = ( decayMode.CompareTo("Electron_Muon") == 0 ) ? 15.  : 20.;
   double xMax = 350.0;
-  double dx   =   1.0;
+  double dx   = ( selection.CompareTo("all")           == 0 ) ?  1.0 :  5.0;
 
   unsigned numBins = TMath::Nint((xMax - xMin)/dx);
 
@@ -75,9 +83,9 @@ TArrayD getBinningMom(const TString& decayMode = "undefined")
   return binning;
 }
 
-TArrayD getBinningSep(const TString& decayMode = "undefined")
+TArrayD getBinningSep(const TString& decayMode = "undefined", const TString& selection = "all")
 {
-  unsigned numBins = 400;
+  unsigned numBins = 100;
   double xMin = 0.0;
   double xMax = 1.0;
 
@@ -93,7 +101,7 @@ TArrayD getBinningSep(const TString& decayMode = "undefined")
   return binning;
 }
 
-TArrayD getBinningSepTimesMom(const TString& decayMode = "undefined")
+TArrayD getBinningSepTimesMom(const TString& decayMode = "undefined", const TString& selection = "all")
 {
   unsigned numBins = 120;
   double xMin =  0.0;
@@ -109,6 +117,16 @@ TArrayD getBinningSepTimesMom(const TString& decayMode = "undefined")
   }
   
   return binning;
+}
+
+//
+//-------------------------------------------------------------------------------
+//
+
+void printTimeStamp(const TString& comment)
+{
+  time_t now = time(0);
+  std::cout << comment.Data() << ": it is NOW " << asctime(localtime(&now)) << std::endl;
 }
 
 #endif

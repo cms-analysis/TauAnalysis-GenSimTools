@@ -8,6 +8,7 @@
 #include "RooWorkspace.h"
 #include "RooFormulaVar.h"
 #include "RooPlot.h"
+#include "RooArgSet.h"
 
 #include <TString.h>
 #include <TFile.h>
@@ -17,6 +18,8 @@
 #include <TH1.h>
 #include <TAxis.h>
 #include <TLegend.h>
+#include <TIterator.h>
+#include <TClass.h>
 
 #include <iostream>
 #include <iomanip>
@@ -51,13 +54,14 @@ int main(int argc, const char* argv[])
 
   RooWorkspace* ws = (RooWorkspace*)inputFile_ws->Get(wsName.Data());
   std::cout << "--> ws = " << ws << std::endl;
-  //ws->Print();
+  ws->Print();
 
   RooRealVar* mom = ws->var(momName.Data());
-  std::cout << "--> mom = " << mom << std::endl;
+  std::cout << "--> mom = " << mom << std::endl;  
 
   RooRealVar* sepTimesMom = ws->var(sepTimesMomName.Data());
   std::cout << "--> sepTimesMom  = " << sepTimesMom << std::endl;
+  sepTimesMom->setRange("combined", 0., 12.);
 
   TauDecayKinePdf* model = dynamic_cast<TauDecayKinePdf*>(ws->pdf(pdfName.Data()));
   std::cout << "--> model = " << model << std::endl;
@@ -81,7 +85,7 @@ int main(int argc, const char* argv[])
 
   TString label = "";
   if      ( inputFileName_ws.Contains("_all_")      ) label = "all";
-  else if ( inputFileName_ws.Contains("_selected_") ) label = "selected";
+  else if ( inputFileName_ws.Contains("_selected_") ) label = "selected1";
   assert(!label.IsNull());
 
   TString inputDirName_full = Form("%s/%s/%s", inputDirName.Data(), label.Data(), decayMode.Data());
@@ -111,6 +115,18 @@ int main(int argc, const char* argv[])
 
     mom->setVal(*momTestValue);
 
+    RooArgSet wsVariables = ws->allVars();
+    TIterator* wsVariable_iter = wsVariables.createIterator();
+    while( RooRealVar* wsVariable = dynamic_cast<RooRealVar*>(wsVariable_iter->Next()) ) {
+      std::cout << wsVariable->GetName() << ": " << wsVariable->getVal() << std::endl;
+    }
+
+    RooArgSet wsFunctions = ws->allFunctions();
+    TIterator* wsFunction_iter = wsFunctions.createIterator();
+    while( RooAbsReal* wsFunction = dynamic_cast<RooAbsReal*>(wsFunction_iter->Next()) ) {
+      std::cout << wsFunction->GetName() << ": " << wsFunction->getVal() << std::endl;
+    }
+
     for ( double sepTimesMomTestValue = 0.5; sepTimesMomTestValue <= 11.5; sepTimesMomTestValue += 1.0 ) {      
       sepTimesMom->setVal(sepTimesMomTestValue);
       std::cout << sepTimesMom->GetName() << " = " << sepTimesMomTestValue << ":" 
@@ -138,7 +154,7 @@ int main(int argc, const char* argv[])
 
     toyData->plotOn(frame, RooFit::MarkerStyle(21), RooFit::MarkerColor(2), RooFit::LineColor(2));
 
-    model->plotOn(frame, RooFit::ProjWData(RooArgSet(*sepTimesMom), *toyData));
+    model->plotOn(frame, RooFit::ProjWData(RooArgSet(*sepTimesMom), *toyData), RooFit::Range("combined"), RooFit::NormRange("combined"));
     
     frame->Draw();
 

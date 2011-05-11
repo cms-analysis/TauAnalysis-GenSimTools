@@ -1094,7 +1094,7 @@ struct fitManager
 
     TString decayMode_string = getDecayMode_string(decayMode_);
 
-    //RooDataHist dataset_binned("dataset_binned", "dataset_binned", RooArgSet(*mom_, *sepTimesMom_), *dataset);
+    RooDataHist dataset_binned("dataset_binned", "dataset_binned", RooArgSet(*mom_, *sepTimesMom_), *dataset);
     
     RooLinkedList options;
     options.Add(new RooCmdArg(RooFit::ConditionalObservables(*mom_)));
@@ -1104,8 +1104,8 @@ struct fitManager
     //options.Add(new RooCmdArg(RooFit::Warnings(-1)));
 
     std::cout << "--> starting fit..." << std::endl;
-    RooFitResult* fitResult = fitModel_->fitTo(*dataset, options);
-    //RooFitResult* fitResult = fitModel_->fitTo(dataset_binned, options); 
+    //RooFitResult* fitResult = fitModel_->fitTo(*dataset, options);
+    RooFitResult* fitResult = fitModel_->fitTo(dataset_binned, options); 
     std::cout << " fit status = " << fitResult->status() << " (converged = 0)" << std::endl;
     delete fitResult;    
     std::cout << " done." << std::endl;

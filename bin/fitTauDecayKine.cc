@@ -1525,7 +1525,8 @@ int main(int argc, const char* argv[])
     if ( runAll      ) selection_string.Append("_all");
     if ( runSelected ) selection_string.Append("_selected");
       
-    TArrayD momBinning = getBinningMom(decayMode_string, selection_string);
+    TArrayD momBinning_all = getBinningMom(decayMode_string, "all");
+    TArrayD momBinning_selected = getBinningMom(decayMode_string, "selected");
     TArrayD sepBinning = getBinningSepTimesMom(decayMode_string, selection_string);
     
     /*****************************************************************************
@@ -1537,7 +1538,7 @@ int main(int argc, const char* argv[])
       if ( fitResults.find(fitManagerName_leg1_dR_all.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg1_dR_all.Data()] = 
 	  new fitManager(&leg1Pt, &leg1VisInvisDeltaRLab, &leg1VisInvisDeltaRLabTimesPt, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg1", "dR", "all"), momBinning);
+			 Form("%s_%s_%s", "leg1", "dR", "all"), momBinning_all);
       }
       fitManager* fitManager_leg1_dR_all = fitResults[fitManagerName_leg1_dR_all.Data()];
       TString outputFileName_leg1_dR_all = Form("plots/fitTauDecayKinePlots_%s_leg1_dR_all.eps", decayMode_string.Data());
@@ -1555,7 +1556,7 @@ int main(int argc, const char* argv[])
       if ( fitResults.find(fitManagerName_leg1_angle_all.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg1_angle_all.Data()] = 
 	  new fitManager(&leg1Energy, &leg1VisInvisAngleLab, &leg1VisInvisAngleLabTimesEnergy, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg1", "angle", "all"), momBinning);
+			 Form("%s_%s_%s", "leg1", "angle", "all"), momBinning_all);
       }
       fitManager* fitManager_leg1_angle_all = fitResults[fitManagerName_leg1_angle_all.Data()];
       TString outputFileName_leg1_angle_all = 
@@ -1578,7 +1579,7 @@ int main(int argc, const char* argv[])
       if ( fitResults.find(fitManagerName_leg1_dR_selected.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg1_dR_selected.Data()] = 
 	  new fitManager(&leg1Pt, &leg1VisInvisDeltaRLab, &leg1VisInvisDeltaRLabTimesPt, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg1", "dR", "selected1"), momBinning);
+			 Form("%s_%s_%s", "leg1", "dR", "selected1"), momBinning_selected);
       }
       fitManager* fitManager_leg1_dR_selected = fitResults[fitManagerName_leg1_dR_selected.Data()];
       TString outputFileName_leg1_dR_selected = Form("plots/fitTauDecayKinePlots_%s_leg1_dR_selected.eps", decayMode_string.Data());
@@ -1596,7 +1597,7 @@ int main(int argc, const char* argv[])
       if ( fitResults.find(fitManagerName_leg1_angle_selected.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg1_angle_selected.Data()] = 
 	  new fitManager(&leg1Energy, &leg1VisInvisAngleLab, &leg1VisInvisAngleLabTimesEnergy, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg1", "angle", "selected1"), momBinning);
+			 Form("%s_%s_%s", "leg1", "angle", "selected1"), momBinning_selected);
       }
       fitManager* fitManager_leg1_angle_selected = fitResults[fitManagerName_leg1_angle_selected.Data()];
       TString outputFileName_leg1_angle_selected = 
@@ -1619,7 +1620,7 @@ int main(int argc, const char* argv[])
       if ( fitResults.find(fitManagerName_leg2_dR_all.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg2_dR_all.Data()] = 
 	  new fitManager(&leg2Pt, &leg2VisInvisDeltaRLab, &leg2VisInvisDeltaRLabTimesPt, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg2", "dR", "all"), momBinning);
+			 Form("%s_%s_%s", "leg2", "dR", "all"), momBinning_all);
       }
       fitManager* fitManager_leg2_dR_all = fitResults[fitManagerName_leg2_dR_all.Data()];
       TString outputFileName_leg2_dR_all = Form("plots/fitTauDecayKinePlots_%s_leg2_dR_all.eps", decayMode_string.Data());
@@ -1637,7 +1638,7 @@ int main(int argc, const char* argv[])
       if ( fitResults.find(fitManagerName_leg2_angle_all.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg2_angle_all.Data()] = 
 	  new fitManager(&leg2Energy, &leg2VisInvisAngleLab, &leg2VisInvisAngleLabTimesEnergy, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg2", "angle", "all"), momBinning);
+			 Form("%s_%s_%s", "leg2", "angle", "all"), momBinning_all);
       }
       fitManager* fitManager_leg2_angle_all = fitResults[fitManagerName_leg2_angle_all.Data()];
       TString outputFileName_leg2_angle_all = 
@@ -1660,7 +1661,7 @@ int main(int argc, const char* argv[])
       if ( fitResults.find(fitManagerName_leg2_dR_selected.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg2_dR_selected.Data()] = 
 	  new fitManager(&leg2Pt, &leg2VisInvisDeltaRLab, &leg2VisInvisDeltaRLabTimesPt, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg2", "dR", "selected1"), momBinning);
+			 Form("%s_%s_%s", "leg2", "dR", "selected1"), momBinning_selected);
       }
       fitManager* fitManager_leg2_dR_selected = fitResults[fitManagerName_leg2_dR_selected.Data()];
       TString outputFileName_leg2_dR_selected = Form("plots/fitTauDecayKinePlots_%s_leg2_dR_selected.eps", decayMode_string.Data());
@@ -1678,7 +1679,7 @@ int main(int argc, const char* argv[])
       if ( fitResults.find(fitManagerName_leg2_angle_selected.Data()) == fitResults.end() ) {
 	fitResults[fitManagerName_leg2_angle_selected.Data()] = 
 	  new fitManager(&leg2Energy, &leg2VisInvisAngleLab, &leg2VisInvisAngleLabTimesEnergy, (*decayModeToRun), 
-			 Form("%s_%s_%s", "leg2", "angle", "selected1"), momBinning);
+			 Form("%s_%s_%s", "leg2", "angle", "selected1"), momBinning_selected);
       }
       fitManager* fitManager_leg2_angle_selected = fitResults[fitManagerName_leg2_angle_selected.Data()];
       TString outputFileName_leg2_angle_selected = 

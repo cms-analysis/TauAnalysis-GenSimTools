@@ -5,7 +5,7 @@ import socket
 import subprocess
 import time
 
-inputFileNames = "/castor/cern.ch/user/v/veelken/CMSSW_4_1_x/ntuples/tauDecayKine/ptBalanceData*.root"
+inputFileNames = "/castor/cern.ch/user/v/veelken/CMSSW_4_1_x/ntuples/tauDecayKine/v5/ptBalanceData_*_ggH.root"
 
 decayModesToRun = [
     "Electron_Muon",
@@ -32,7 +32,7 @@ selectionsToRun = [
 submit = "yes"
 #submit = "no"
 
-queue = "1nd"
+queue = "1nw"
 #queue = "1nh"
 
 #resourceRequest = None

@@ -1,7 +1,6 @@
 
 #include "TauAnalysis/GenSimTools/bin/tauDecayKineAuxFunctions.h"
 #include "TauAnalysis/FittingTools/interface/TauDecayKinePdf.h"
-#include "TauAnalysis/FittingTools/interface/RooSkewNormal.h"
 
 #include "FWCore/Utilities/interface/Exception.h"
 
@@ -179,7 +178,7 @@ double compFallingEdgePos(TH1* histogram, int decayMode, double& errEdgePosRight
   return fallindEdgePos;
 }
 
-void compPrePeakPos(TH1* histogram, int decayMode, double& prePeakPosLeft, double& prePeakPosRight, double& prePeakArea)
+void compPrePeakPos(TH1* histogram, int decayMode, double& prePeakPosLeft, double& prePeakPosRight)
 {
   int binMax = histogram->GetMaximumBin();
   double binContentMax = histogram->GetBinContent(binMax);
@@ -222,22 +221,6 @@ void compPrePeakPos(TH1* histogram, int decayMode, double& prePeakPosLeft, doubl
 
   prePeakPosLeft  = histogram->GetBinCenter(binPrePeakMax);
   prePeakPosRight = histogram->GetBinCenter(binPrePeakMin);
-
-  prePeakArea = 0.;
-  double totalArea   = 0.;
-
-  int numBins = histogram->GetNbinsX();
-  for ( int iBin = 1; iBin <= numBins; ++iBin ) {
-    double binContent = histogram->GetBinContent(iBin);
-
-    if ( iBin >= binPrePeakMax && iBin <= binPrePeakMin ) prePeakArea += binContent;
-    totalArea += binContent;
-  }
-
-  if ( (totalArea - prePeakArea) > 0. ) 
-    prePeakArea /= (totalArea - prePeakArea);
-  else
-    prePeakArea  = 1.;
 }
 
 double compFCN(TH1* histogram, int iBin0, int iBin1, double mp, double width)
@@ -381,11 +364,6 @@ struct fitManager
       decayMode_(decayMode),
       label_(label),
       momBinning_(momBinning),
-      //prefitParamPrePeakGMean_(momBinning.GetSize() - 1),
-      //prefitParamPrePeakGSigma_(momBinning.GetSize() - 1),
-      //prefitParamPrePeakAlpha_(momBinning.GetSize() - 1),
-      //prefitParamPrePeakMixing_(momBinning.GetSize() - 1),
-      //prefitPrePeakPdf_(momBinning.GetSize() - 1),
       prefitParamGMean_(momBinning.GetSize() - 1),
       prefitParamGSigma_(momBinning.GetSize() - 1),
       prefitParamAlpha_(momBinning.GetSize() - 1),
@@ -398,17 +376,7 @@ struct fitManager
       prefitParamWidth2_(momBinning.GetSize() - 1),
       prefitParamX0_(momBinning.GetSize() - 1),
       prefitParamDeltaX1_(momBinning.GetSize() - 1),
-      prefitTauDecayKinePdf_(momBinning.GetSize() - 1),
       prefitModel_(momBinning.GetSize() - 1),
-      //fitParamCoeffPrePeakGMean_(5),
-      //fitParamPrePeakGMean_(0),
-      //fitParamCoeffPrePeakGSigma_(5),      
-      //fitParamPrePeakGSigma_(0),
-      //fitParamCoeffPrePeakAlpha_(2),      
-      //fitParamPrePeakAlpha_(0),
-      //fitParamCoeffPrePeakMixing_(2),      
-      //fitParamPrePeakMixing_(0),
-      //fitPrePeakPdf_(0),
       fitParamCoeffGMean_(5),
       fitParamGMean_(0),
       fitParamCoeffGSigma_(5),      
@@ -433,7 +401,6 @@ struct fitManager
       fitParamX0_(0),
       fitParamCoeffDeltaX1_(3),
       fitParamDeltaX1_(0),
-      fitTauDecayKinePdf_(0),
       fitModel_(0)
   {
     std::cout << "<fitManager::fitManager>:" << std::endl;
@@ -454,13 +421,6 @@ struct fitManager
     prefitResultX0_ = new TGraphErrors();
     prefitResultDeltaX1_ = new TGraphErrors();
 
-//--- define parameters for 2nd skewed Gaussian
-//    specific to OneProng0Pi0 decay mode
-    //prefitResultPrePeakGMean_ = new TGraphErrors();
-    //prefitResultPrePeakGSigma_ = new TGraphErrors();
-    //prefitResultPrePeakAlpha_ = new TGraphErrors();
-    //prefitResultPrePeakMixing_ = new TGraphErrors();
-  
 //--- parametrize pt/energy dependence of GMean fitParameter by (orthogonal) Chebyshev polynomials
 //   ( cf. http://mathworld.wolfram.com/ChebyshevPolynomialoftheFirstKind.html )
     momParametrizationFormulaGMean_   = 
@@ -481,12 +441,6 @@ struct fitManager
     momParametrizationFormulaX0_      = "[0] + [1]*x";
     momParametrizationFormulaDeltaX1_ = "[0]*TMath::Min(1., [1]*(x - [2]))";
 
-    //momParametrizationFormulaPrePeakGMean_   = 
-    //  "TMath::Abs((1./(x*x*x*x))*([0] + [1]*x + [2]*(2.0*x*x - 1.0) + [3]*(4.0*x*x*x - 3.0*x) + [4]*(8.0*x*x*x*x - 8.0*x*x + 1.0)))";
-    //momParametrizationFormulaPrePeakGSigma_  = "([0] + [1]*x)*(1.0 + [2]*TMath::TanH([3] + [4]*x))";
-    //momParametrizationFormulaPrePeakAlpha_   = "[0] + [1]*x";
-    //momParametrizationFormulaPrePeakMixing_  = "[0] + [1]*x";
-    
     momParamGMean_ = bookTF1("GMean", momParametrizationFormulaGMean_);
     momParamGMean_->SetParameter(   0,      2.9        );
     momParamGMean_->SetParameter(   1,      0.         );
@@ -519,21 +473,6 @@ struct fitManager
     momParamDeltaX1_->SetParameter( 0,      8.5        );
     momParamDeltaX1_->SetParameter( 1,      0.01       );
     momParamDeltaX1_->SetParameter( 2,     20.         );
-
-    //momParamPrePeakGMean_ = bookTF1("prePeakGMean", momParametrizationFormulaPrePeakGMean_);
-    //momParamPrePeakGMean_->SetParameter(   0,      2.9        );
-    //momParamPrePeakGMean_->SetParameter(   1,      0.         );
-    //momParamPrePeakGMean_->SetParameter(   2,      0.2        );
-    //momParamPrePeakGMean_->SetParameter(   3, -60.*0.05       );
-    //momParamPrePeakGMean_->SetParameter(   4,      0.05       );
-    //momParamPrePeakGSigma_ = bookTF1("prePeakGSigma", momParametrizationFormulaPrePeakGSigma_);
-    //momParamPrePeakGSigma_->SetParameter(  0,      1.         );
-    //momParamPrePeakGSigma_->SetParameter(  1,      0.         );
-    //momParamPrePeakGSigma_->SetParameter(  2,      0.2        );
-    //momParamPrePeakGSigma_->SetParameter(  3, -60.*0.05       );
-    //momParamPrePeakGSigma_->SetParameter(  4,      0.05       );
-    //momParamPrePeakAlpha_ = bookTF1("prePeakAlpha", momParametrizationFormulaPrePeakAlpha_);
-    //momParamPrePeakMixing_ = bookTF1("prePeakMixing", momParametrizationFormulaPrePeakMixing_);
   }
 
   ~fitManager()
@@ -550,14 +489,6 @@ struct fitManager
     clearCollection(prefitParamWidth2_);
     clearCollection(prefitParamX0_);
     clearCollection(prefitParamDeltaX1_);    
-    //if ( decayMode_ == kOneProng0Pi0 ) {
-    //  clearCollection(prefitParamPrePeakGMean_);
-    //  clearCollection(prefitParamPrePeakGSigma_);
-    //  clearCollection(prefitParamPrePeakAlpha_);
-    //  clearCollection(prefitParamPrePeakMixing_);
-    //  clearCollection(prefitPrePeakPdf_);
-    //  clearCollection(prefitTauDecayKinePdf_);
-    //}
     clearCollection(prefitModel_);
 
     delete prefitResultGMean_;
@@ -572,12 +503,6 @@ struct fitManager
     delete prefitResultWidth2_;
     delete prefitResultX0_;
     delete prefitResultDeltaX1_;
-    //if ( decayMode_ == kOneProng0Pi0 ) {
-    //  delete prefitResultPrePeakGMean_;
-    //  delete prefitResultPrePeakGSigma_;
-    //  delete prefitResultPrePeakAlpha_;
-    //  delete prefitResultPrePeakMixing_;
-    //}
 
     delete momParamGMean_;
     delete momParamGSigma_;
@@ -591,13 +516,7 @@ struct fitManager
     delete momParamWidth2_;
     delete momParamX0_;
     delete momParamDeltaX1_;
-    //if ( decayMode_ == kOneProng0Pi0 ) {
-    //  delete momParamPrePeakGMean_;
-    //  delete momParamPrePeakGSigma_;
-    //  delete momParamPrePeakAlpha_;
-    //  delete momParamPrePeakMixing_;
-    //}
-    
+
     clearCollection(fitParamCoeffGMean_);
     delete fitParamGMean_;
     clearCollection(fitParamCoeffGSigma_);
@@ -622,18 +541,6 @@ struct fitManager
     delete fitParamX0_;
     clearCollection(fitParamCoeffDeltaX1_);
     delete fitParamDeltaX1_;
-    //if ( decayMode_ == kOneProng0Pi0 ) {
-    //  clearCollection(fitParamCoeffPrePeakGMean_);
-    //  delete fitParamPrePeakGMean_;
-    //  clearCollection(fitParamCoeffPrePeakGSigma_);
-    //  delete fitParamPrePeakGSigma_;
-    //  clearCollection(fitParamCoeffPrePeakAlpha_);
-    //  delete fitParamPrePeakAlpha_;
-    //  clearCollection(fitParamCoeffPrePeakMixing_);
-    //  delete fitParamPrePeakMixing_;
-    //  delete fitPrePeakPdf_;
-    //  delete fitTauDecayKinePdf_;
-    //}
     delete fitModel_;
   }
 
@@ -747,10 +654,6 @@ struct fitManager
     printPrefitParameter("width2", prefitParamWidth2_[momBin]);
     printPrefitParameter("x0", prefitParamX0_[momBin]);
     printPrefitParameter("dx1", prefitParamDeltaX1_[momBin]);
-    //printPrefitParameter("prepeak_gmean", prefitParamPrePeakGMean_[momBin]);
-    //printPrefitParameter("prepeak_gsigma", prefitParamPrePeakGSigma_[momBin]);
-    //printPrefitParameter("prepeak_alpha", prefitParamPrePeakAlpha_[momBin]);
-    //printPrefitParameter("prepeak_mixing", prefitParamPrePeakMixing_[momBin]);
   }
 
   void runPrefit(const TString& inputFileName, const TString& inputDirName, const TString& label, const TString& outputFileName)
@@ -811,10 +714,8 @@ struct fitManager
       std::cout << " fallingEdge_position = " << fallingEdge_position << std::endl;    
       double prePeak_position_left  = 0.;
       double prePeak_position_right = 0.;
-      double prePeak_area           = 0.;
-      compPrePeakPos(histogram, decayMode_, prePeak_position_left, prePeak_position_right, prePeak_area);
-      std::cout << " prePeak_position = " << prePeak_position_left << ".." << prePeak_position_right << ":" 
-		<< " area = " << prePeak_area << std::endl;  
+      compPrePeakPos(histogram, decayMode_, prePeak_position_left, prePeak_position_right);
+      std::cout << " prePeak_position = " << prePeak_position_left << ".." << prePeak_position_right << std::endl;  
       double histogramRMS = histogram->GetRMS();
       //if ( histogramRMS  > 0.15 ) histogramRMS  = 0.15;
       std::cout << " histogramRMS = " << histogramRMS << std::endl;
@@ -969,60 +870,18 @@ struct fitManager
 	dx1_isConstant = false;
       }
       prefitParamDeltaX1_[iMomBin] = buildPrefitParameter("dx1", momBinName, dx1Initial, dx1Min, dx1Max, dx1_isConstant);
-/*
-      if ( decayMode_ == kOneProng0Pi0 ) {
-	double prePeakGMeanMin = prePeak_position_left - 0.5*histogram->GetBinWidth(histogram->GetMaximumBin());
-	double prePeakGMeanMax = prePeak_position_left + 0.5*histogram->GetBinWidth(histogram->GetMaximumBin());
-	prefitParamPrePeakGMean_[iMomBin] = 
-	  buildPrefitParameter("prepeak_gmean", momBinName, prePeak_position_left, prePeakGMeanMin, prePeakGMeanMax);
-	prefitParamPrePeakGSigma_[iMomBin] = buildPrefitParameter("prepeak_gsigma", momBinName, 0.25, 0.10, 0.50);
-	prefitParamPrePeakAlpha_[iMomBin] = buildPrefitParameter("prepeak_alpha", momBinName, 1.e+1, 0., 1.e+2);
 
-	TString pdfTauDecayKineName = 
-	  Form("pdfTauDecayKine_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), sep_->GetName(), label_.Data());
-	prefitTauDecayKinePdf_[iMomBin] = 
-	  new TauDecayKinePdf(pdfTauDecayKineName.Data(), pdfTauDecayKineName.Data(), 
-			      *sepTimesMom_prefit, 
-			      *prefitParamGMean_[iMomBin], *prefitParamGSigma_[iMomBin], *prefitParamAlpha_[iMomBin], 
-			      *prefitParamSlope_[iMomBin], *prefitParamOffset_[iMomBin], *prefitParamC_[iMomBin],
-			      *prefitParamMP1_[iMomBin], *prefitParamWidth1_[iMomBin], 
-			      *prefitParamMP2_[iMomBin], *prefitParamWidth2_[iMomBin], 
-			      *prefitParamX0_[iMomBin], *prefitParamDeltaX1_[iMomBin]);
+      TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), sep_->GetName(), label_.Data());
+      prefitModel_[iMomBin] = 
+	new TauDecayKinePdf(modelName.Data(), modelName.Data(), 
+			    *sepTimesMom_prefit, 
+			    *prefitParamGMean_[iMomBin], *prefitParamGSigma_[iMomBin], *prefitParamAlpha_[iMomBin], 
+			    *prefitParamSlope_[iMomBin], *prefitParamOffset_[iMomBin], *prefitParamC_[iMomBin],
+			    *prefitParamMP1_[iMomBin], *prefitParamWidth1_[iMomBin], 
+			    *prefitParamMP2_[iMomBin], *prefitParamWidth2_[iMomBin], 
+			    *prefitParamX0_[iMomBin], *prefitParamDeltaX1_[iMomBin]);
 
-	TString pdfPrePeakName = 
-	  Form("pdfPrePeak_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), sep_->GetName(), label_.Data());
-	prefitPrePeakPdf_[iMomBin] = 
-	//  new RooSkewNormal(pdfPrePeakName.Data(), pdfPrePeakName.Data(), 
-	//		      *sepTimesMom_prefit,
-	//		      *prefitParam2ndGMean_[iMomBin], *prefitParam2ndGSigma_[iMomBin], *prefitParam2ndAlpha_[iMomBin]);
-	  new RooGenericPdf(pdfPrePeakName.Data(), pdfPrePeakName.Data(), 
-			    "TMath::Gaus(@0, @1, @2)*(1.0 + TMath::Erf(@3*((@0 - @1)/@2)/TMath::Sqrt(2)))",
-			    RooArgList(*sepTimesMom_prefit, 
-				       *prefitParamPrePeakGMean_[iMomBin], *prefitParamPrePeakGSigma_[iMomBin], 
-				       *prefitParamPrePeakAlpha_[iMomBin]));
-
-	prefitParamPrePeakMixing_[iMomBin] = buildPrefitParameter("prepeak_mixing", momBinName, 0.1, 0., 0.4);
-
-	TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), sep_->GetName(), label_.Data());
-	prefitModel_[iMomBin] = 
-	  new RooAddPdf(modelName.Data(), modelName.Data(), 
-			*prefitPrePeakPdf_[iMomBin], *prefitTauDecayKinePdf_[iMomBin], *prefitParamPrePeakMixing_[iMomBin]);
-      } else {
- */
-	TString modelName = Form("pdf_%s_%s_%s_%s", decayMode_string.Data(), momBinName.Data(), sep_->GetName(), label_.Data());
-	prefitTauDecayKinePdf_[iMomBin] = 
-	  new TauDecayKinePdf(modelName.Data(), modelName.Data(), 
-			      *sepTimesMom_prefit, 
-			      *prefitParamGMean_[iMomBin], *prefitParamGSigma_[iMomBin], *prefitParamAlpha_[iMomBin], 
-			      *prefitParamSlope_[iMomBin], *prefitParamOffset_[iMomBin], *prefitParamC_[iMomBin],
-			      *prefitParamMP1_[iMomBin], *prefitParamWidth1_[iMomBin], 
-			      *prefitParamMP2_[iMomBin], *prefitParamWidth2_[iMomBin], 
-			      *prefitParamX0_[iMomBin], *prefitParamDeltaX1_[iMomBin]);
-
-	prefitTauDecayKinePdf_[iMomBin]->disableAnalyticIntegration();
-
-	prefitModel_[iMomBin] = prefitTauDecayKinePdf_[iMomBin];
-      //}
+      prefitModel_[iMomBin]->disableAnalyticIntegration();
 
       TObjArray prefitParamConstraints;
 
@@ -1078,45 +937,6 @@ struct fitManager
       options.Add(new RooCmdArg(RooFit::Warnings(-1)));
       options.Add(new RooCmdArg(RooFit::ExternalConstraints(RooArgSet(prefitParamConstraints))));
 
-//--- perform fit of "pre-Peak" distribution specific to OneProng0Pi0 decay mode
-/*
-      if ( decayMode_ == kOneProng0Pi0 ) {
-	std::cout << "--> fitting pre-Peak distribution..." << std::endl;
-	RooLinkedList options_prePeak(options);
-	double sepTimesMomMin_prePeak = prePeak_position_left - TMath::Abs(prePeak_position_right - prePeak_position_left);
-	double sepTimesMomMax_prePeak = prePeak_position_right;
-	sepTimesMom_prefit->setRange("prePeak", sepTimesMomMin_prePeak, sepTimesMomMax_prePeak);
-	options_prePeak.Add(new RooCmdArg(RooFit::Range("prePeak")));
-	prefitParamPrePeakGMean_[iMomBin]->setConstant(false);
-	prefitParamPrePeakGSigma_[iMomBin]->setConstant(false);
-	prefitParamPrePeakAlpha_[iMomBin]->setConstant(false);
-
-	prefitParamGMean_[iMomBin]->setConstant(true);
-	prefitParamGSigma_[iMomBin]->setConstant(true);
-	prefitParamAlpha_[iMomBin]->setConstant(true);
-	prefitParamSlope_[iMomBin]->setConstant(true);
-	prefitParamOffset_[iMomBin]->setConstant(true);
-	prefitParamC_[iMomBin]->setConstant(false);
-	prefitParamMP1_[iMomBin]->setConstant(true);
-	prefitParamWidth1_[iMomBin]->setConstant(true);
-	prefitParamMP2_[iMomBin]->setConstant(true);
-	prefitParamWidth2_[iMomBin]->setConstant(true);
-	prefitParamX0_[iMomBin]->setConstant(true);
-	prefitParamDeltaX1_[iMomBin]->setConstant(true);
-
-	setRealVar_Value_Range(prefitParamPrePeakMixing_[iMomBin], 1., 0., 1. + epsilon);
-	prefitParamPrePeakMixing_[iMomBin]->setConstant(true);
-	
-	RooFitResult* prefitResult_prePeak = prefitModel_[iMomBin]->fitTo(*datahist, options_prePeak);
-	delete prefitResult_prePeak;
-	
-	prefitParamPrePeakGMean_[iMomBin]->setConstant(true);
-	prefitParamPrePeakGSigma_[iMomBin]->setConstant(true);
-	prefitParamPrePeakAlpha_[iMomBin]->setConstant(true);
-
-	printAllPrefitParameter(iMomBin);
-      }
- */      
 //--- perform stand-alone fit of Gaussian distribution
       std::cout << "--> fitting Gaussian distribution..." << std::endl;
       RooLinkedList options_gaussian(options);
@@ -1274,16 +1094,7 @@ struct fitManager
       if ( !width2_isConstant ) prefitParamWidth2_[iMomBin]->setConstant(false);
       if ( !x0_isConstant     ) prefitParamX0_[iMomBin]->setConstant(false);
       if ( !dx1_isConstant    ) prefitParamDeltaX1_[iMomBin]->setConstant(false);
-/*
-      if ( decayMode_ == kOneProng0Pi0 ) {
-	prefitParamPrePeakGSigma_[iMomBin]->setConstant(false);
-	//setRealVar_Value_Range(prefitParamPrePeakMixing_[iMomBin], 0.1, 0., 0.4);
-	//setRealVar_Value_Range(prefitParamPrePeakMixing_[iMomBin], prePeak_area, 0.5*prePeak_area, 2.*prePeak_area);
-	setRealVar_Value_Range(prefitParamPrePeakMixing_[iMomBin], 0., -epsilon, +epsilon);
-	//prefitParamPrePeakMixing_[iMomBin]->setConstant(false);	       
-	prefitParamPrePeakMixing_[iMomBin]->setConstant(true);
-      }
- */
+
       RooFitResult* prefitResult = prefitModel_[iMomBin]->fitTo(*datahist, options_combined);
       std::cout << " prefit status = " << prefitResult->status() << " (converged = 0)" << std::endl;
       delete prefitResult;
@@ -1302,15 +1113,8 @@ struct fitManager
 
       printAllPrefitParameter(iMomBin);
 
-      prefitTauDecayKinePdf_[iMomBin]->enableAnalyticIntegration();
-/*
-      if ( decayMode_ == kOneProng0Pi0 ) {
-	storePrefitResults(prefitParamPrePeakGMean_[iMomBin], momMin, momMax, prefitResultPrePeakGMean_);
-	storePrefitResults(prefitParamPrePeakGSigma_[iMomBin], momMin, momMax, prefitResultPrePeakGSigma_);
-	storePrefitResults(prefitParamPrePeakAlpha_[iMomBin], momMin, momMax, prefitResultPrePeakAlpha_);
-	storePrefitResults(prefitParamPrePeakMixing_[iMomBin], momMin, momMax, prefitResultPrePeakMixing_);
-      }
- */
+      prefitModel_[iMomBin]->enableAnalyticIntegration();
+
       storePrefitResults(prefitParamGMean_[iMomBin], momMin, momMax, prefitResultGMean_);
       storePrefitResults(prefitParamGSigma_[iMomBin], momMin, momMax, prefitResultGSigma_);
       storePrefitResults(prefitParamAlpha_[iMomBin], momMin, momMax, prefitResultAlpha_);
@@ -1374,14 +1178,7 @@ struct fitManager
     delete inputFile;
    
     delete sepTimesMom_prefit;
-/*
-    if ( decayMode_ == kOneProng0Pi0 ) {
-      fitTF1(momParamPrePeakGMean_,  prefitResultPrePeakGMean_,  prefitCoeffValPrePeakGMean_,  prefitCoeffErrPrePeakGMean_);
-      fitTF1(momParamPrePeakGSigma_, prefitResultPrePeakGSigma_, prefitCoeffValPrePeakGSigma_, prefitCoeffErrPrePeakGSigma_);
-      fitTF1(momParamPrePeakAlpha_,  prefitResultPrePeakAlpha_,  prefitCoeffValPrePeakAlpha_,  prefitCoeffErrPrePeakAlpha_);
-      fitTF1(momParamPrePeakMixing_, prefitResultPrePeakMixing_, prefitCoeffValPrePeakMixing_, prefitCoeffErrPrePeakMixing_);
-    }  
- */
+
     fitTF1(momParamGMean_,   prefitResultGMean_,   prefitCoeffValGMean_,   prefitCoeffErrGMean_);
     fitTF1(momParamGSigma_,  prefitResultGSigma_,  prefitCoeffValGSigma_,  prefitCoeffErrGSigma_);
     fitTF1(momParamAlpha_,   prefitResultAlpha_,   prefitCoeffValAlpha_,   prefitCoeffErrAlpha_);
@@ -1444,18 +1241,14 @@ struct fitManager
 						     prefitCoeffValGMean_, prefitCoeffErrGMean_, momParametrizationFormulaGMean_);
     fitParamGSigma_  = buildMomDependentFitParameter("gsigma", fitParamCoeffGSigma_, 
 						     prefitCoeffValGSigma_, prefitCoeffErrGSigma_, momParametrizationFormulaGSigma_);
-    //fitParamAlpha_   = buildMomDependentFitParameter("alpha", fitParamCoeffAlpha_, 
-    //						       prefitCoeffValAlpha_, prefitCoeffErrAlpha_, momParametrizationFormulaAlpha_);
-    fitParamAlpha_   = buildConstPrefitParameter("alpha", "AllMom", 0.);
+    fitParamAlpha_   = buildMomDependentFitParameter("alpha", fitParamCoeffAlpha_, 
+						     prefitCoeffValAlpha_, prefitCoeffErrAlpha_, momParametrizationFormulaAlpha_);
     fitParamSlope_   = buildMomDependentFitParameter("slope", fitParamCoeffSlope_, 
 						     prefitCoeffValSlope_, prefitCoeffErrSlope_, momParametrizationFormulaSlope_);
-    //fitParamSlope_   = buildConstPrefitParameter("slope", "AllMom", 0.);
-    //fitParamOffset_  = buildMomDependentFitParameter("offset", fitParamCoeffOffset_, 
-    //						       prefitCoeffValOffset_, prefitCoeffErrOffset_, momParametrizationFormulaOffset_);
-    fitParamOffset_  = buildConstPrefitParameter("offset", "AllMom", 0.);
+    fitParamOffset_  = buildMomDependentFitParameter("offset", fitParamCoeffOffset_, 
+						     prefitCoeffValOffset_, prefitCoeffErrOffset_, momParametrizationFormulaOffset_);
     fitParamC_       = buildMomDependentFitParameter("C", fitParamCoeffC_, 
 						     prefitCoeffValC_, prefitCoeffErrC_, momParametrizationFormulaC_);
-    //fitParamC_       = buildConstPrefitParameter("C", "AllMom", 1.);
     fitParamMP1_     = buildMomDependentFitParameter("mp1", fitParamCoeffMP1_, 
 						     prefitCoeffValMP1_, prefitCoeffErrMP1_, momParametrizationFormulaMP1_);
     fitParamWidth1_  = buildMomDependentFitParameter("width1", fitParamCoeffWidth1_, 
@@ -1490,7 +1283,7 @@ struct fitManager
     pdfTimingTest(fitModel_, mom_, sepTimesMom_);
     std::cout << " done." << std::endl;
     
-    fitTauDecayKinePdf_->disableAnalyticIntegration();
+    fitModel_->disableAnalyticIntegration();
     
     std::cout << "--> estimate PDF timing (analytic integration disabled)..." << std::endl;
     pdfTimingTest(fitModel_, mom_, sepTimesMom_);
@@ -1521,7 +1314,7 @@ struct fitManager
     delete fitResult;    
     std::cout << " done." << std::endl;
 
-    fitTauDecayKinePdf_->enableAnalyticIntegration();
+    fitModel_->enableAnalyticIntegration();
 
     std::cout << "--> saving fit results..." << std::endl;
     RooWorkspace* ws_fit = new RooWorkspace("ws_fit", "workspace");
@@ -1619,12 +1412,6 @@ struct fitManager
   TString label_;
   TArrayD momBinning_;
 
-  //std::vector<RooRealVar*> prefitParamPrePeakGMean_;
-  //std::vector<RooRealVar*> prefitParamPrePeakGSigma_;
-  //std::vector<RooRealVar*> prefitParamPrePeakAlpha_;
-  //std::vector<RooRealVar*> prefitParamPrePeakMixing_;
-  //std::vector<RooAbsPdf*>  prefitPrePeakPdf_;
-
   std::vector<RooRealVar*> prefitParamGMean_;
   std::vector<RooRealVar*> prefitParamGSigma_;
   std::vector<RooRealVar*> prefitParamAlpha_;
@@ -1637,14 +1424,7 @@ struct fitManager
   std::vector<RooRealVar*> prefitParamWidth2_;
   std::vector<RooRealVar*> prefitParamX0_;
   std::vector<RooRealVar*> prefitParamDeltaX1_;
-  std::vector<TauDecayKinePdf*> prefitTauDecayKinePdf_;
-
-  std::vector<RooAbsPdf*> prefitModel_;
-
-  //TGraphErrors* prefitResultPrePeakGMean_;
-  //TGraphErrors* prefitResultPrePeakGSigma_;
-  //TGraphErrors* prefitResultPrePeakAlpha_;
-  //TGraphErrors* prefitResultPrePeakMixing_;
+  std::vector<TauDecayKinePdf*> prefitModel_;
 
   TGraphErrors* prefitResultGMean_;
   TGraphErrors* prefitResultGSigma_;
@@ -1659,11 +1439,6 @@ struct fitManager
   TGraphErrors* prefitResultX0_;
   TGraphErrors* prefitResultDeltaX1_;
 
-  //TString momParametrizationFormulaPrePeakGMean_;
-  //TString momParametrizationFormulaPrePeakGSigma_;
-  //TString momParametrizationFormulaPrePeakAlpha_;
-  //TString momParametrizationFormulaPrePeakMixing_;
-
   TString momParametrizationFormulaGMean_;
   TString momParametrizationFormulaGSigma_;
   TString momParametrizationFormulaAlpha_;
@@ -1677,11 +1452,6 @@ struct fitManager
   TString momParametrizationFormulaX0_;
   TString momParametrizationFormulaDeltaX1_;
 
-  //TF1* momParamPrePeakGMean_;
-  //TF1* momParamPrePeakGSigma_;
-  //TF1* momParamPrePeakAlpha_;
-  //TF1* momParamPrePeakMixing_;
-
   TF1* momParamGMean_;
   TF1* momParamGSigma_;
   TF1* momParamAlpha_;
@@ -1694,15 +1464,6 @@ struct fitManager
   TF1* momParamWidth2_;
   TF1* momParamX0_;
   TF1* momParamDeltaX1_;
-
-  //std::vector<double> prefitCoeffValPrePeakGMean_;
-  //std::vector<double> prefitCoeffErrPrePeakGMean_;
-  //std::vector<double> prefitCoeffValPrePeakGSigma_;
-  //std::vector<double> prefitCoeffErrPrePeakGSigma_;
-  //std::vector<double> prefitCoeffValPrePeakAlpha_;
-  //std::vector<double> prefitCoeffErrPrePeakAlpha_;
-  //std::vector<double> prefitCoeffValPrePeakMixing_;
-  //std::vector<double> prefitCoeffErrPrePeakMixing_;
 
   std::vector<double> prefitCoeffValGMean_;
   std::vector<double> prefitCoeffErrGMean_;
@@ -1729,16 +1490,6 @@ struct fitManager
   std::vector<double> prefitCoeffValDeltaX1_;
   std::vector<double> prefitCoeffErrDeltaX1_;
   
-  //std::vector<RooRealVar*> fitParamCoeffPrePeakGMean_;
-  //RooAbsReal* fitParamPrePeakGMean_;
-  //std::vector<RooRealVar*> fitParamCoeffPrePeakGSigma_;
-  //RooAbsReal* fitParamPrePeakGSigma_;
-  //std::vector<RooRealVar*> fitParamCoeffPrePeakAlpha_;
-  //RooAbsReal* fitParamPrePeakAlpha_;
-  //std::vector<RooRealVar*> fitParamCoeffPrePeakMixing_;
-  //RooAbsReal* fitParamPrePeakMixing_;
-  //RooAbsPdf* fitPrePeakPdf_;
-
   std::vector<RooRealVar*> fitParamCoeffGMean_;
   RooAbsReal* fitParamGMean_;
   std::vector<RooRealVar*> fitParamCoeffGSigma_;
@@ -1763,18 +1514,7 @@ struct fitManager
   RooAbsReal* fitParamX0_;
   std::vector<RooRealVar*> fitParamCoeffDeltaX1_;
   RooAbsReal* fitParamDeltaX1_;
-  TauDecayKinePdf* fitTauDecayKinePdf_;
-
-  RooAbsPdf* fitModel_;
-
-  //std::vector<double> fitCoeffValPrePeakGMean_;
-  //std::vector<double> fitCoeffErrPrePeakGMean_;
-  //std::vector<double> fitCoeffValPrePeakGSigma_;
-  //std::vector<double> fitCoeffErrPrePeakGSigma_;
-  //std::vector<double> fitCoeffValPrePeakAlpha_;
-  //std::vector<double> fitCoeffErrPrePeakAlpha_;
-  //std::vector<double> fitCoeffValPrePeakMixing_;
-  //std::vector<double> fitCoeffErrPrePeakMixing_;
+  TauDecayKinePdf* fitModel_;
 
   std::vector<double> fitCoeffValGMean_;
   std::vector<double> fitCoeffErrGMean_;

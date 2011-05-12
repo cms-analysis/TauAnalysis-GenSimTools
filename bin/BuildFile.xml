@@ -55,3 +55,8 @@
   <use   name="rootrflx"/>
   <use   name="boost_program_options"/>
 </bin>
+<bin   file="testRooWorkSpace_loading.cc" name="testRooWorkSpace_loading">
+  <use   name="TauAnalysis/FittingTools"/>
+  <use   name="roofit"/>
+  <use   name="root"/>
+</bin>

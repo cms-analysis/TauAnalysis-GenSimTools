@@ -72,3 +72,6 @@
   <use   name="roofit"/>
   <use   name="root"/>
 </bin>
+<bin   file="runNtuplePreselection.cc" name="runNtuplePreselection">
+  <use   name="root"/>
+</bin>

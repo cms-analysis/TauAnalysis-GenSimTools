@@ -32,8 +32,9 @@ selectionsToRun = [
 submit = "yes"
 #submit = "no"
 
-queue = "1nw"
-#queue = "1nh"
+# use '1nw' queue for "full" fit, '1nh' queue for prefit only
+#queue = "1nw"
+queue = "1nh"
 
 #resourceRequest = None
 resourceRequest = "rusage[mem=3200, swp=3200]"
@@ -80,10 +81,10 @@ setenv SCRAM_ARCH %(architecture)s
 eval `scram runtime -csh`
 cd -
 set fileNames=(`%(nslsCommand)s`)
-foreach fileName (${fileNames})
-    echo "copying fileName %(inputFilePath)s/${fileName} --> ./${fileName}"
-    rfcp %(inputFilePath)s/${fileName} ./${fileName}
-end
+#foreach fileName (${fileNames})
+#    echo "copying fileName %(inputFilePath)s/${fileName} --> ./${fileName}"
+#    rfcp %(inputFilePath)s/${fileName} ./${fileName}
+#end
 rfcp /castor/cern.ch/user/v/veelken/CMSSW_4_1_x/plots/tauDecayKine/makeTauDecayKinePlots.root .
 mkdir plots
 %(executable)s %(parameter)s

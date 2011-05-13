@@ -101,6 +101,13 @@ int main(int argc, const char* argv[])
   momTestValues.push_back(75.5);
   momTestValues.push_back(125.5);
 
+  TArrayD momBinning_all = getBinningMom(decayMode.Data(), "all");
+  TArrayD momBinning_selected = getBinningMom(decayMode.Data(), "selected");
+  TArrayD* momBinning = 0;
+  if      ( label.Contains("all")      ) momBinning = &momBinning_all;
+  else if ( label.Contains("selected") ) momBinning = &momBinning_selected;	
+  else assert(0);
+
   TCanvas* canvas = new TCanvas("canvas", "canvas", 1, 1, 800, 600);
   canvas->SetFillColor(10);
   canvas->SetBorderSize(2);
@@ -163,8 +170,16 @@ int main(int argc, const char* argv[])
     else if ( inputDirName.Contains("Angle")  ) momName = "Energy";
     assert(!momName.IsNull());
 
-    double momMin = TMath::Floor(*momTestValue);
-    double momMax = TMath::Ceil(*momTestValue);
+    double momMin = 0.;
+    double momMax = 0.;
+    for ( int iMomBin = 0; iMomBin < (momBinning->GetSize() - 1); ++iMomBin ) {
+      if ( momBinning->At(iMomBin)     <= (*momTestValue) &&
+	   momBinning->At(iMomBin + 1) >  (*momTestValue) ) {
+        momMin = momBinning->At(iMomBin);
+        momMax = momBinning->At(iMomBin + 1);
+      }
+    }
+    assert(momMax > momMin);
     TString histogramName = 
       Form("%s_%s%s%2.0fto%2.0f", decayMode.Data(), label.Data(), momName.Data(), momMin, momMax);
     TH1* histogram = (TH1*)inputFile_histograms->Get(TString(inputDirName_full.Data()).Append("/").Append(histogramName.Data()));      

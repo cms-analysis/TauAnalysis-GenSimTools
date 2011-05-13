@@ -4,7 +4,7 @@ import os
 
 executable = "../../../../bin/slc5_amd64_gcc434/testRooWorkSpace_loading"
 
-inputFilePath = "/afs/cern.ch/user/v/veelken/scratch0/CMSSW_4_1_3/src/TauAnalysis/GenSimTools/test/mcTauDecayKine_2011May11ii"
+inputFilePath = "/afs/cern.ch/user/v/veelken/scratch0/CMSSW_4_1_3/src/TauAnalysis/GenSimTools/test/mcTauDecayKine_2011May13vii"
 
 wsList = [
     # tau --> e/mu nu nu Decays, dR vs. Pt

@@ -40,6 +40,13 @@
   <use   name="boost_program_options"/>
   <use   name="TauAnalysis/FittingTools"/>
 </bin>
+<bin file="fitPtBalancePhiSlice.cc" name="fitPtBalancePhiSlice" >
+  <use   name="roofit"/>
+  <use   name="root"/>
+  <use   name="rootrflx"/>
+  <use   name="boost_program_options"/>
+  <use   name="TauAnalysis/FittingTools"/>
+</bin>
 <bin file="runPtBalancePrefit.cc" name="runPtBalancePrefit" >
   <use   name="roofit"/>
   <use   name="root"/>
@@ -51,6 +58,11 @@
   <use   name="FWCore/Utilities"/>
   <use   name="TauAnalysis/FittingTools"/>
   <use   name="roofit"/>
+  <use   name="root"/>
+  <use   name="rootrflx"/>
+  <use   name="boost_program_options"/>
+</bin>
+<bin file="filterPtBalanceNtuples.cc" name= "filterPtBalanceNtuples">
   <use   name="root"/>
   <use   name="rootrflx"/>
   <use   name="boost_program_options"/>

@@ -20,29 +20,37 @@ int main(int argc, char **argv) {
   po::options_description desc("Allowed options");
 
   int nPhiSlices;
+  int varPhiBins;
   int massSliceSize;
   int startMass;
   int stopMass;
   int ptBins;
+  int skip;
   double maxScaledPt;
   std::string outputFile;
   std::string inputFiles;
+  std::string treename;
 
   desc.add_options()
     ("help", "Show help message")
     ("phi-slices", po::value<int>(&nPhiSlices)->default_value(20),
      "Number of phi slices")
+    ("phi-variable-bins", po::value<int>(&varPhiBins)->default_value(0),
+     "If nonzero, use a variable in size for phi.  Each bin will contain "
+     "an equal number of events.")
     ("mass-slice-size", po::value<int>(&massSliceSize)->default_value(10),
      "Size of mass slice in GeV")
     ("start-mass", po::value<int>(&startMass)->default_value(65),
      "Lowest mass to consider")
     ("stop-mass", po::value<int>(&stopMass)->default_value(505),
      "Highest mass to consider")
-    ("max-scaledpt", po::value<double>(&maxScaledPt)->default_value(4.0),
+    ("max-scaledpt", po::value<double>(&maxScaledPt)->default_value(2.0),
      "Maximum range of scaled pt")
     ("pt-bins", po::value<int>(&ptBins)->default_value(200),
      "Number of bins in the observable")
     ("output-file,o", po::value<string>(&outputFile), "output file")
+    ("tree-name", po::value<string>(&treename)->default_value("makePtBalanceNtuple/ptBalanceNtuple"), "TTree name")
+    ("skip-selection", po::value<int>(&skip)->default_value(0), "skip kin. selection")
     ("input-files,i",
      po::value<string>(&inputFiles),
      "input file glob");
@@ -65,7 +73,7 @@ int main(int argc, char **argv) {
   // Load the input files.
   std::cout << "Loading data from " << inputFiles <<  std::endl;
 
-  TChain chain("makePtBalanceNtuple/ptBalanceNtuple");
+  TChain chain(treename.c_str());
   int filesAdded = chain.Add(inputFiles.c_str());
   if (!filesAdded) {
     std::cerr << "No valid input files specified!" << std::endl;
@@ -74,14 +82,14 @@ int main(int argc, char **argv) {
     std::cout << "Loaded " << filesAdded << " files." << std::endl;
   }
 
-  RooRealVar leg1Pt("leg1Pt", "leg1Pt", 0, 250);
-  RooRealVar leg2Pt("leg2Pt", "leg2Pt", 0, 250);
-  RooRealVar leg1VisPt("leg1VisPt", "leg1VisPt", 0, 200);
-  RooRealVar leg2VisPt("leg2VisPt", "leg2VisPt", 0, 200);
+  RooRealVar leg1Pt("leg1Pt", "leg1Pt", 0, 700);
+  RooRealVar leg2Pt("leg2Pt", "leg2Pt", 0, 700);
+  RooRealVar leg1VisPt("leg1VisPt", "leg1VisPt", 0, 700);
+  RooRealVar leg2VisPt("leg2VisPt", "leg2VisPt", 0, 700);
   RooRealVar leg1VisEta("leg1VisEta", "leg1VisEta", -5, 5);
   RooRealVar leg2VisEta("leg2VisEta", "leg2VisEta", -5, 5);
   RooRealVar leg1Leg2DPhi("leg1Leg2DPhi", "leg1Leg2DPhi", 0, 3.14159);
-  RooRealVar resonanceMass("resonanceMass", "resonanceMass", 0, 500);
+  RooRealVar resonanceMass("resonanceMass", "resonanceMass", 0, 1400);
 
   // Build the initial dataset
   RooDataSet data("data", "dataset",
@@ -96,10 +104,17 @@ int main(int argc, char **argv) {
 
   std::cout << "Applying kinematic selections..." << std::endl;
 
-  RooDataSet* selectedData = dynamic_cast<RooDataSet*>(data.reduce(
-      RooArgSet(leg1Pt, leg2Pt, leg1Leg2DPhi, resonanceMass),
-      "leg1VisPt > 15 && leg2VisPt > 20 && "
-      "abs(leg1VisEta) < 2.1 && abs(leg2VisEta) < 2.3"));
+  RooDataSet* selectedData = NULL;
+
+  if (!skip) {
+    selectedData = dynamic_cast<RooDataSet*>(data.reduce(
+          RooArgSet(leg1Pt, leg2Pt, leg1Leg2DPhi, resonanceMass),
+          "leg1VisPt > 15 && leg2VisPt > 20 && "
+          "abs(leg1VisEta) < 2.1 && abs(leg2VisEta) < 2.3"));
+  } else {
+    selectedData = dynamic_cast<RooDataSet*>(data.reduce(
+          RooArgSet(leg1Pt, leg2Pt, leg1Leg2DPhi, resonanceMass)));
+  }
 
   std::cout << "Kinematic selection has " << selectedData->numEntries()
     << " entries." << std::endl;
@@ -149,6 +164,7 @@ int main(int argc, char **argv) {
   // Don't need it anymore.
   //delete selectedData;
 
+  /*
   std::cout << "Splitting into leg1High and leg2High datasets" << std::endl;
   RooAbsData* leg1HighData = reducedSelectedData->reduce(
       "leg1Val > leg2Val");
@@ -182,17 +198,18 @@ int main(int argc, char **argv) {
       "leg2Leg2HighDataBinned",
       RooArgSet(*leg2Val, *dPhi, resonanceMass),
       *leg2HighData);
+  */
 
   std::cout << "Building workspace." << std::endl;
   RooWorkspace ws("ptBalanceDataWS");
 
-  ws.import(*reducedSelectedData);
+  //ws.import(*reducedSelectedData);
   ws.import(leg1DataBinned);
   ws.import(leg2DataBinned);
-  ws.import(leg1Leg1HighDataBinned);
-  ws.import(leg2Leg1HighDataBinned);
-  ws.import(leg1Leg2HighDataBinned);
-  ws.import(leg2Leg2HighDataBinned);
+  //ws.import(leg1Leg1HighDataBinned);
+  //ws.import(leg2Leg1HighDataBinned);
+  //ws.import(leg1Leg2HighDataBinned);
+  //ws.import(leg2Leg2HighDataBinned);
 
   ws.Print("v");
 

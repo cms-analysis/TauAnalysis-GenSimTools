@@ -1,6 +1,10 @@
 #include <boost/program_options.hpp>
 
 #include "TFile.h"
+#include "TH1F.h"
+#include "TF1.h"
+#include "TGraphErrors.h"
+#include "TMath.h"
 #include "TCanvas.h"
 #include "TROOT.h"
 #include "TClonesArray.h"
@@ -11,11 +15,46 @@
 #include "RooAbsPdf.h"
 #include "RooPlot.h"
 #include "RooDataHist.h"
+#include "RooDataSet.h"
 #include "RooFitResult.h"
 #include "RooFormulaVar.h"
+#include "TauAnalysis/FittingTools/interface/RooAbsEstimatablePdf.h"
+#include "TauAnalysis/FittingTools/interface/RooCruijff.h"
 
 using namespace RooFit;
 namespace po = boost::program_options;
+
+namespace {
+  TGraphErrors makeXYGraph(const RooDataSet& data,
+      RooAbsArg& x, RooAbsArg& y) {
+    std::cout << "<makeXYGraph>" << std::endl;
+    double sumYError = 0;
+    double xError = -1;
+    double ySum = 0;
+    size_t numEntries = data.numEntries();
+    TGraphErrors output(numEntries);
+    for(size_t i = 0; i < numEntries; ++i) {
+      const RooArgSet* row = data.get(i);
+      RooRealVar* xVal = dynamic_cast<RooRealVar*>(row->find(x.GetName()));
+      RooRealVar* yVal = dynamic_cast<RooRealVar*>(row->find(y.GetName()));
+      assert(xVal);
+      assert(yVal);
+
+      output.SetPoint(i, xVal->getVal(), yVal->getVal());
+      std::cout << "Adding x: " << xVal->getVal() << " y: " << yVal->getVal()
+        << std::endl;
+      sumYError += yVal->getError();
+      xError = xVal->getError(); // always the same
+      ySum += yVal->getVal();
+    }
+    // Make sure we don't have bins with tiny errors driving the fit
+    for(size_t i = 0; i < numEntries; ++i) {
+      output.SetPointError(i, xError,
+          TMath::Max(sumYError/numEntries, TMath::Abs(ySum/numEntries)));
+    }
+    return output;
+  }
+}
 
 int main(int argc, char **argv) {
   gROOT->SetBatch(true);
@@ -109,6 +148,7 @@ int main(int argc, char **argv) {
   observableName << "leg" << legToFit << "Val";
 
   RooRealVar* x = dataWS->var(observableName.str().c_str());
+  x->setRange(0, 2.0);
   RooRealVar* mass = dataWS->var("resonanceMass");
   RooRealVar* phi = dataWS->var("dPhi");
 
@@ -164,6 +204,8 @@ int main(int argc, char **argv) {
   std::cout << "The model has " << components->getSize() << " components:"
     << std::endl;
 
+  model->Print("v");
+
   TObject *comp = NULL;
   TIterator* compIter = components->createIterator();
   int iComp = 0;
@@ -171,6 +213,28 @@ int main(int argc, char **argv) {
     iComp++;
     std::cout << iComp << ") " << comp->GetName() << std::endl;
   }
+
+  // Define a dataset
+  RooArgSet modelObservables(*x);
+
+  std::auto_ptr<RooArgSet> modelParameters(model->getParameters(
+      &modelObservables));
+
+  // Add the resonance mass variable to our data
+  std::auto_ptr<RooArgSet> fitResultVariables(new RooArgSet(*modelParameters));
+
+  fitResultVariables->add(*mass);
+
+  std::cout << "Found the following dependent variables:" << std::endl;
+  fitResultVariables->Print("v");
+
+  std::cout << "Building fit results data store..." << std::endl;
+
+  RooDataSet fitResults("fitResult", "fitResults",
+      *fitResultVariables, StoreError(*fitResultVariables));
+
+  std::cout << " Data store has the structure: " << std::endl;
+  fitResults.Print("v");
 
   TClonesArray results("RooFitResult", nMassBins);
   TVectorD massPoints(nMassBins);
@@ -202,12 +266,37 @@ int main(int argc, char **argv) {
       << ". This mass-phi region has " << massBin->sumEntries()
       << " entries." << std::endl;
 
-    std::auto_ptr<RooPlot> frame(x->frame(Range(0, 4.)));
+    std::auto_ptr<RooPlot> frame(x->frame(Range(0, 2.)));
     massBin->plotOn(frame.get());
     double plotMaximum = 1.2*frame->GetMaximum();
+
     // Make sure we always start from the same conditions
-    //modelWS->loadSnapshot("initialConditions");
-    RooFitResult* result  = model->fitTo(*massBin, Save(true), PrintLevel(-1));
+    modelWS->loadSnapshot("initialConditions");
+    // Try to estimate the paramters
+    std::cout << "Trying to esimate parameters..." << std::endl;
+    RooAbsEstimatablePdf* estModel = dynamic_cast<RooAbsEstimatablePdf*>(model);
+    if (estModel) {
+      std::cout << "Estimating..." << std::endl;
+      RooArgSet pars = estModel->estimateParameters(*massBin);
+      std::cout << "Estimated values for: " << pars << std::endl;
+      std::cout << "Plotting pre-estimation" << std::endl;
+      // Plot pre-estimation
+      model->plotOn(frame.get(), LineStyle(kDashed));
+    } else {
+      std::cout << "PDF does not support pre-estimation" << std::endl;
+    }
+
+
+    std::auto_ptr<RooArgSet> observables(model->getObservables(*massBin));
+    RooRealVar* modelObservable = dynamic_cast<RooRealVar*>(
+        observables->first());
+    modelObservable->setMax(2.0);
+
+    RooFitResult* result  = model->fitTo(
+        *massBin, Save(true), PrintLevel(-1), PrintEvalErrors(0));
+
+    result->Print("v");
+    std::cout << "Covariance quality: " << result->covQual() << std::endl;
     results[i] = static_cast<TObject*>(result);
     model->plotOn(frame.get());
     if (componentToPlot != "") {
@@ -215,6 +304,30 @@ int main(int argc, char **argv) {
           LineColor(kRed));
     }
     frame->SetMaximum(plotMaximum);
+
+    if (result->covQual() == 3) {
+      RooArgSet dataThisFit;
+      *mass = (highMassEdge - lowMassEdge)*0.5 + lowMassEdge;
+      mass->setError(massBinSize*0.5);
+      dataThisFit.add(*mass);
+
+      const RooArgList& floatParsFinal = result->floatParsFinal();
+      const RooArgList& constPars = result->constPars();
+      for (int iPar = 0; iPar < floatParsFinal.getSize(); ++iPar) {
+        RooRealVar* par = dynamic_cast<RooRealVar*>(floatParsFinal.at(iPar));
+        assert(par);
+        //par->setError(TMath::Abs(par->getVal()));
+        dataThisFit.add(*par);
+      }
+      for (int iPar = 0; iPar < constPars.getSize(); ++iPar) {
+        RooRealVar* par = dynamic_cast<RooRealVar*>(constPars.at(iPar));
+        assert(par);
+        //par->setError(0.1*TMath::Abs(par->getVal()));
+        dataThisFit.add(*par);
+      }
+      dataThisFit.Print("v");
+      fitResults.add(dataThisFit);
+    }
 
     std::stringstream massRangeStr;
     massRangeStr << "(" << lowMassEdge << " - " << highMassEdge << ")";
@@ -235,20 +348,168 @@ int main(int argc, char **argv) {
     canvas.Print(summaryFileName.str().c_str());
   }
 
+  fitResults.Print("v");
+
+  //canvas.cd(1);
+  //gPad->SetLogy(false);
+  //canvas.cd(2);
+  //gPad->SetLogy(false);
+  //canvas.cd(0);
+
+  std::stringstream extendModelName;
+  extendModelName << modelToFit << "_fun";
+  std::cout << "Finding extended function: "
+    << extendModelName.str() << std::endl;
+
+  RooAbsPdf* extendedModel = modelWS->pdf(extendModelName.str().c_str());
+  if (extendedModel) {
+    std::cout << "Dumping model!" << std::endl;
+    extendedModel->printTree(std::cout);
+  } else {
+    std::cout << "Couldn't find the model!" << std::endl;
+  }
+
+
+  std::cout << "Printing fit trends..." << std::endl;
+  TObject *modelPar = NULL;
+  TIterator* modelParIter = modelParameters->createIterator();
+  int iPar = 0;
+  std::vector<RooPlot*> garbage;
+  while ((modelPar = modelParIter->Next())) {
+    std::auto_ptr<RooPlot> massFrame(mass->frame());
+    RooRealVar* yvar = static_cast<RooRealVar*>(modelPar);
+
+    std::cout << "Making trends for: " <<  yvar->GetName() << std::endl;
+
+    fitResults.plotOnXY(massFrame.get(), YVar(*yvar));
+    massFrame->SetTitle(yvar->GetName());
+    //garbage.push_back(massFrame);
+
+    std::cout << "Checking for paramterization function" << std::endl;
+    std::stringstream funName;
+    funName << yvar->GetName() << "_fun";
+    RooAbsReal* function = modelWS->function(funName.str().c_str());
+    if (function) {
+      std::cout << "Found function!" << std::endl;
+      fitResults.Print("v");
+      function->Print("v");
+      std::cout << "observables: " <<
+        *(function->getObservables(fitResults)) << std::endl;
+      std::cout << "parameters: " <<
+        *(function->getParameters(fitResults)) << std::endl;
+
+      std::auto_ptr<RooArgSet> func_observables(
+          function->getObservables(fitResults));
+      std::auto_ptr<RooArgSet> func_parameters(
+          function->getParameters(fitResults));
+
+      RooArgList func_observables_List(*func_observables);
+      RooArgList func_parameters_List(*func_parameters);
+
+      std::cout << "Building TF1 " << std::endl;
+      std::auto_ptr<TF1> functionToFit(function->asTF(
+          func_observables_List,
+          func_parameters_List));
+
+      std::cout << "Making TGraph" << std::endl;
+      TGraphErrors graph = makeXYGraph(fitResults, *mass, *yvar);
+
+      function->plotOn(massFrame.get(), LineColor(kRed));
+
+      std::cout << "Fitting TGraph" << std::endl;
+      graph.Fit(functionToFit.get());
+
+      std::cout << "Copying parameter errors" << std::endl;
+      for (int iFittedPar = 0; iFittedPar < functionToFit->GetNpar(); ++iFittedPar) {
+        RooRealVar* var = dynamic_cast<RooRealVar*>(func_parameters_List.at(iFittedPar));
+        assert(var);
+        std::cout << "Par " << iFittedPar << ") "
+          << functionToFit->GetParName(iFittedPar)
+          // sanity check
+          << ":" << var->GetName()
+          << " = " << functionToFit->GetParameter(iFittedPar)
+          << " +- " << functionToFit->GetParError(iFittedPar) << std::endl;
+
+        var->setVal(functionToFit->GetParameter(iFittedPar));
+        var->setError(functionToFit->GetParError(iFittedPar));
+        var->Print("v");
+      }
+
+      function->plotOn(massFrame.get());
+    }
+
+    canvas.cd(1);
+    massFrame->Draw();
+
+    double minimum = massFrame->GetMinimum();
+    std::cout << "Minimum is: " <<  minimum << std::endl;
+
+    std::auto_ptr<TH1> histo(fitResults.createHistogram(yvar->GetName()));
+    int firstNonZeroBin = -1;
+    int lastNonZeroBin = -1;
+    for (int iBin = 1; iBin < histo->GetNbinsX(); ++iBin) {
+      if (histo->GetBinContent(iBin) > 0 && firstNonZeroBin != -1) {
+        firstNonZeroBin = iBin;
+      }
+      if (histo->GetBinContent(iBin) > 0) {
+        lastNonZeroBin = iBin;
+      }
+    }
+
+    double firstNonZeroX = histo->GetBinCenter(firstNonZeroBin);
+    double lastNonZeroX = histo->GetBinCenter(lastNonZeroBin);
+    massFrame->SetMinimum(firstNonZeroX - TMath::Abs(0.1*firstNonZeroX));
+    massFrame->SetMaximum(lastNonZeroX + TMath::Abs(0.1*lastNonZeroX));
+
+    if (massFrame->GetMinimum() > 0.0) {
+      canvas.cd(2);
+      massFrame->Draw();
+      canvas.Print(summaryFileName.str().c_str());
+    } else {
+      // Else we need to add an offset to make it positive everywhere
+      /*
+      std::stringstream formula;
+      formula << "@0 - " << massFrame->GetMinimum();
+      RooFormulaVar addOffset("addOffset", "addOffset",
+          formula.str().c_str(), RooArgList(*yvar));
+      RooRealVar* offsetVar = static_cast<RooRealVar*>(
+          fitResults.addColumn(addOffset));
+      std::auto_ptr<RooPlot> massFrameForOffset(mass->frame());
+      fitResults.plotOn(massFrameForOffset.get(), YVar(*offsetVar));
+      canvas.cd(2);
+      massFrameForOffset->Draw();
+      */
+      canvas.Print(summaryFileName.str().c_str());
+    }
+
+    iPar++;
+  }
+
+  if (extendedModel) {
+    std::cout << "Dumping model again!" << std::endl;
+    extendedModel->printTree(std::cout);
+  } else {
+    std::cout << "Couldn't find the model!" << std::endl;
+  }
+
   std::stringstream summaryFileNameClose;
   summaryFileNameClose << summaryFileName.str() << "]";
   canvas.SaveAs(summaryFileNameClose.str().c_str());
   std::cout << "Done writing summary canvas, converting to pdf..." << std::endl;
   std::stringstream converterCommand;
   converterCommand << "epstopdf " << summaryFileName.str();
+  std::stringstream removeCommand;
+  removeCommand << "rm " << summaryFileName.str();
   int convertResult = system(converterCommand.str().c_str());
-  if (!convertResult)
-    std::cout << "Converted to pdf successfully." << std::endl;
-  else {
+  if (!convertResult) {
+    std::cout << "Converted to pdf successfully, deleting .ps file." << std::endl;
+    system(removeCommand.str().c_str());
+  } else {
     std::cerr << "Could not convert to pdf!" << std::endl;
   }
 
   std::cout << "Saving output workspace" << std::endl;
+
   TFile outputFile(outputFilePath.c_str(), "RECREATE");
   outputFile.cd();
   RooWorkspace ws("ptBalanceModeFit");
@@ -257,6 +518,9 @@ int main(int argc, char **argv) {
   ws.import(massPoints, "massPoints");
   ws.import(massBinning, "massBinning");
   ws.import(phiEdges, "phiEdges");
+  if (extendedModel)
+    ws.import(*extendedModel);
+
   ws.Print("v");
   ws.Write();
   outputFile.Close();

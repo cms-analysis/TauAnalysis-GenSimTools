@@ -14,6 +14,7 @@
 
 #include "TauAnalysis/FittingTools/interface/RooSkewNormal.h"
 #include "TauAnalysis/FittingTools/interface/TauDecayKinePdf.h"
+#include "TauAnalysis/FittingTools/interface/RooCruijff.h"
 
 using namespace RooFit;
 namespace po = boost::program_options;
@@ -21,6 +22,37 @@ namespace po = boost::program_options;
 RooRealVar* makeVar(RooWorkspace& ws, const std::string& command) {
   RooRealVar* output = static_cast<RooRealVar*>(ws.factory(command.c_str()));
   return output;
+}
+
+std::string makeErf(const std::string& name, const std::string& depvar,
+    double xoffset, double valAtOffset, double xPlateau, double valAtPlateu) {
+  double scaleFactor = (valAtPlateu - valAtOffset);
+  double turnon = 1.0/(xPlateau - xoffset);
+  std::stringstream output;
+  output << "expr::" << name << "("
+    << "'@1*TMath::Erf( (@0-@2 -" << xoffset << ")*@3 ) + @4',"
+    << "{" << depvar << ","
+    << name << "_yscale[" << scaleFactor << ", -20, 20],"
+    << name << "_xshift[0, -40, 40],"
+    << name << "_turnon[" << turnon << ", 0, 1],"
+    << name << "_yoffset[" << valAtOffset << ", -10, 10]})";
+  std::cout << "makeErf: " << output.str() << std::endl;
+  return output.str();
+}
+
+
+std::string makePolynomial(const std::string& name, const std::string& depvar,
+    double x0, double y0, double x1, double y1, double min=-10, double max=10) {
+  double slope_term = (y1 - y0)/(x1 - x0);
+  double offset_term = y1 - slope_term*x1;
+
+  std::stringstream output;
+  output << "RooPolyVar::" << name << "(" << depvar << ", "
+    << "{"
+    << name << "_a[" << offset_term << ", " << min << ", " << max << "], "
+    << name << "_b[" << slope_term << ", " << min << ", " << max << "]})";
+  std::cout << "PolyVar: " << output.str() << std::endl;
+  return output.str();
 }
 
 int main(int argc, char **argv) {
@@ -47,131 +79,132 @@ int main(int argc, char **argv) {
 
   // Build the dependent variables
   RooRealVar* leg1Val = static_cast<RooRealVar*>(
-      ws.factory("leg1Val[0, 4.0]"));
+      ws.factory("leg1Val[0, 2.0]"));
   RooRealVar* leg2Val = static_cast<RooRealVar*>(
-      ws.factory("leg2Val[0, 4.0]"));
+      ws.factory("leg2Val[0, 2.0]"));
   RooRealVar* dPhi = static_cast<RooRealVar*>(
     ws.factory("dPhi[0, 2.0]"));
   RooRealVar* resonanceMass = static_cast<RooRealVar*>(
     ws.factory("resonanceMass[70, 495]"));
 
-  // Generic location variable
-  RooRealVar* location = makeVar(ws, "location[0.8, 0.5, 2]");
-  RooRealVar* location2 = makeVar(ws, "location2[0.8, 0.0, 20]");
-  // Generic scale variable
-  RooRealVar* scale = makeVar(ws, "scale[0.5, 0, 4]");
-  RooRealVar* scale2 = makeVar(ws, "scale2[0.5, 0, 4]");
-  // Generic skew variable
-  RooRealVar* skew = makeVar(ws, "skew[1.0, -50, 50]");
-  RooRealVar* skew2 = makeVar(ws, "skew2[1.0, -50, 50]");
-  skew->setError(1.0);
+  ws.factory("RooSkewNormal::sn_leg1("
+    "leg1Val, sn_location[0.8, 0.5, 2], sn_scale[0.5, 0, 4],"
+    "sn_skew[1.0, -50, 50])");
 
-  // Add a Gaussian for testing
-  ws.factory("RooGaussian::gaussLeg1(leg1Val, location, scale)");
+  ws.factory(makeErf("sn_location_fun", "resonanceMass",
+        60, 0.78, 250, 0.64).c_str());
 
-  //ws.import(skewNormalLeg1);
+  ws.factory(makeErf("sn_scale_fun", "resonanceMass",
+        60, 0.3, 120, 0.4).c_str());
 
-  RooRealVar* relativeScaleFactor = makeVar(ws,
-      "relativeScaleFactor[0.5, 0.2, 1.0]");
+  ws.factory(makeErf("sn_skew_fun", "resonanceMass",
+        60, 2.5, 450, 1.7).c_str());
 
-  RooRealVar* lessThanMix = makeVar(ws, "mix[0.5, 0, 0.95]");
+  ws.factory("RooSkewNormal::sn_leg1_fun("
+    "leg1Val, sn_location_fun, sn_scale_fun,"
+    "sn_skew_fun)");
 
-  RooFormulaVar relativeScale("relativeScale", "relativeScale",
-      "@0*@1", RooArgList(*relativeScaleFactor, *scale));
+  ws.factory("TauDecayKinePdf::tdk_leg1("
+    "leg1Val,"
+    "tdk_gmean[1, 0.1, 3],"
+    "tdk_gsigma[0.1, 0.0, 2],"
+    //"tdk_alpha[0, -20, 20],"
+    "tdk_alpha[0, -20, 0],"
+    "tdk_slope[0],"
+    "tdk_offset[0],"
+    "tdk_C[1.0],"
+    "tdk_mp1[0.5, 0, 10],"
+    "tdk_width1[1, 1e-3, 10],"
+    "tdk_mp2[0.5, 0, 10],"
+    "tdk_width2[1, 1e-3, 10],"
+    "tdk_x0[1.1, 0.5, 10],"
+    "tdk_dx1[0.5, 0.05, 1])"
+    );
 
-  RooSkewNormal skewNormalLeg1("skewNormalLeg1", "skewNormalLeg1",
-      *leg1Val, *location, relativeScale, *skew);
 
-  RooSkewNormal skewNormal2Leg1("skewNormal2Leg1", "skewNormal2Leg1",
-      *leg1Val, *location, *scale, *skew);
-  //location->setConstant(true);
+  std::cout << "Building gmean function" << std::endl;
 
-  RooAddPdf doubleSkewNormalLeg1("doubleSkewNormalLeg1", "doubleSkewNormalLeg1",
-      skewNormal2Leg1,
-      skewNormalLeg1,
-      *lessThanMix);
+  //ws.factory(makePolynomial("tdk_gmean_fun", "resonanceMass",
+        //100, 1, 450, 1.8).c_str());
+  ws.factory(makeErf("tdk_gmean_fun", "resonanceMass",
+        60, 1.1, 500, 1.58).c_str());
 
-  RooConstVar neg2("neg2", "neg2", -3.0);
-  RooExponential shrinkSkinny("shrinkSkinny", "shrinkSkinny",
-      *lessThanMix, neg2);
+  std::cout << "Building gsigma function" << std::endl;
+  //ws.factory(makePolynomial("tdk_gsigma_fun", "resonanceMass",
+  //      100, 0.2, 450, 0.4).c_str());
+  ws.factory(makeErf("tdk_gsigma_fun", "resonanceMass",
+        60, 0.19, 500, 0.38).c_str());
 
-  RooConstVar locationConstraintFactor("locConstFactor", "locConstFactor", 0.20);
-  RooGaussian locationConstraint("locConstraint", "locConstraint",
-      *location, *location2, locationConstraintFactor);
+  std::cout << "Building alpha function" << std::endl;
+  //ws.factory(makePolynomial("tdk_alpha_fun", "resonanceMass",
+  //      100, -0.65, 450, -0.35).c_str());
+  ws.factory(makeErf("tdk_alpha_fun", "resonanceMass",
+        60, -0.65, 225, -0.4).c_str());
 
-  RooProdPdf constrainedDoubleSkewLeg1(
-      "constrainedDoubleSkewLeg1",
-      "constrainedDoubleSkewLeg1",
-      RooArgList(
-        shrinkSkinny,
-        //locationConstraint,
-        doubleSkewNormalLeg1));
+  /*
+  std::cout << "Building slope function" << std::endl;
+  ws.factory(makePolynomial("tdk_slope_fun", "resonanceMass",
+        100, 0, 450, 0).c_str());
 
-  RooConstVar zero("zero", "zero", 0.0);
-  RooGamma gammaLeg1("gammaLeg1", "gammaLeg1",
-      *leg1Val, *location2, *scale2, zero);
+  std::cout << "Building offset function" << std::endl;
+  ws.factory(makePolynomial("tdk_offset_fun", "resonanceMass",
+        100, 0, 450, 0).c_str());
 
-  RooAddPdf skewNormPlusGamma("skewNormPlusGamma", "skewNormPlusGamma",
-      gammaLeg1, skewNormal2Leg1, *lessThanMix);
+  std::cout << "Building C function" << std::endl;
+  ws.factory(makePolynomial("tdk_C_fun", "resonanceMass",
+        100, 1, 450, 1).c_str());
+        */
 
-  RooProdPdf skewNormPlusGammaConstrained("skewNormPlusGammaConstrained",
-      "skewNormPlusGammaConstrained",
-      RooArgList(shrinkSkinny, skewNormPlusGamma));
+  std::cout << "Building mp1 function" << std::endl;
+  ws.factory(makePolynomial("tdk_mp1_fun", "resonanceMass",
+        100, 0.99, 450, 1, -1, 2).c_str());
 
-  ws.import(doubleSkewNormalLeg1, RecycleConflictNodes());
-  ws.import(constrainedDoubleSkewLeg1, RecycleConflictNodes());
-  ws.import(skewNormPlusGammaConstrained, RecycleConflictNodes());
+  ws.factory(makePolynomial("tdk_width1_fun", "resonanceMass",
+        100, 1e-4, 450, 1e-4).c_str());
 
-  // Make Leg 2
-  RooSkewNormal skewNormalLeg2("skewNormalLeg2", "skewNormalLeg2",
-      *leg2Val, *location, relativeScale, *skew);
+  ws.factory(makePolynomial("tdk_mp2_fun", "resonanceMass",
+        100, 1.04, 450, 1.02).c_str());
 
-  RooSkewNormal skewNormal2Leg2("skewNormal2Leg2", "skewNormal2Leg2",
-      *leg2Val, *location, *scale, *skew);
+  ws.factory(makePolynomial("tdk_width2_fun", "resonanceMass",
+        100, 0.03, 450, 0.01).c_str());
 
-  RooAddPdf doubleSkewNormalLeg2("doubleSkewNormalLeg2", "doubleSkewNormalLeg2",
-      skewNormal2Leg2,
-      skewNormalLeg2,
-      *lessThanMix);
+  ws.factory(makePolynomial("tdk_x0_fun", "resonanceMass",
+        100, 1.02, 450, 1.0).c_str());
 
-  RooProdPdf constrainedDoubleSkewLeg2(
-      "constrainedDoubleSkewLeg2",
-      "constrainedDoubleSkewLeg2",
-      RooArgList(shrinkSkinny, doubleSkewNormalLeg2));
+  ws.factory(makePolynomial("tdk_dx1_fun", "resonanceMass",
+        100, 0.16, 450, 0.16, 0, 0.5).c_str());
 
-  ws.import(doubleSkewNormalLeg2, RecycleConflictNodes());
-  ws.import(constrainedDoubleSkewLeg2, RecycleConflictNodes());
+  ws.factory("TauDecayKinePdf::tdk_leg1_fun("
+    "leg1Val,"
+    "tdk_gmean_fun,"
+    "tdk_gsigma_fun,"
+    //"tdk_alpha[0, -20, 20],"
+    "tdk_alpha_fun,"
+    "tdk_slope[0],"
+    "tdk_offset[0],"
+    "tdk_C[1.0],"
+    "tdk_mp1_fun,"
+    "tdk_width1_fun,"
+    "tdk_mp2_fun,"
+    "tdk_width2_fun,"
+    "tdk_x0_fun,"
+    "tdk_dx1_fun)"
+    );
 
-  // Christians PDF
-  RooRealVar* gmean = makeVar(ws, "gmean[0.8, 0.1, 2]");
-  RooRealVar* gsigma = makeVar(ws, "gsigma[0.1, 0.0, 2]");
-  RooRealVar* alpha = makeVar(ws, "alpha[0, -20, 20]");
-  alpha->setConstant(true);
-  RooRealVar* offset = makeVar(ws, "offset[0, -1, 1]");
-  RooRealVar* slope = makeVar(ws, "slope[2, 0, 3]");
+  //ws.factory("RooCruijff::cru_leg1(leg1Val,"
+      //"cru_mean[1, 0, 2], cru_sigmaL[0.1, 0, 2], cru_sigmaR[0.1, 0, 2],"
+      //"cru_alphaL[0.1, 0, 2], cru_alphaR[0.1, 0, 2])");
 
-  RooRealVar* C = makeVar(ws, "C[0.25, 0, 1]");
+  // Define parameters that shouldn't be included in the final fit
+  std::cout << "Defining constant parameters" << std::endl;
+  ws.defineSet("tdk_leg1_fun_static", "tdk_x0_fun_a");
+  ws.extendSet("tdk_leg1_fun_static", "tdk_x0_fun_b");
+  ws.extendSet("tdk_leg1_fun_static", "tdk_dx1_fun_a");
+  ws.extendSet("tdk_leg1_fun_static", "tdk_dx1_fun_b");
 
-  RooRealVar* mp1 = makeVar(ws, "mp1[0.5, -10, 10]");
-  RooRealVar* width1 = makeVar(ws, "width1[1, 0, 10]");
 
-  RooRealVar* mp2 = makeVar(ws, "mp2[1, -10, 10]");
-  mp2->setConstant(true);
-  RooRealVar* width2 = makeVar(ws, "width2[1, 0, 10]");
-  width2->setConstant(true);
-  RooRealVar* x0 = makeVar(ws, "x0[1.1, 0.5, 10]");
-  RooRealVar* dx1 = makeVar(ws, "dx1[10, 0.5, 20]");
-  dx1->setConstant(true);
-  x0->setConstant(true);
 
-  TauDecayKinePdf tauDecayKinePdf("tauDecayKinePdf", "tauDecayKinePdf",
-      *leg1Val, *gmean, *gsigma, *alpha, *slope, *offset, *C,
-      *mp1, *width1, *mp2, *width2, *x0, *dx1);
-
-  ws.import(tauDecayKinePdf, RecycleConflictNodes());
-
-  // Final fits
-
+  /*
   // Location of skew normal
   std::cout << "Building Skew Normal location" << std::endl;
   ws.factory(
@@ -214,8 +247,7 @@ int main(int argc, char **argv) {
       "sn_gamma_mix_fun*"
       "RooGamma::gamma(leg1Val, gamma_gamma_fun, gamma_beta_fun, 0.0),"
       "RooSkewNormal::sn(leg1Val, sn_loc_fun, sn_scale_fun, sn_skew_fun))");
-
-
+      */
 
   // Save the initial conditions in a snapshot.
   ws.saveSnapshot("initialConditions", ws.allVars());

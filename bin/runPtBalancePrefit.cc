@@ -89,7 +89,9 @@ int main(int argc, char **argv) {
 
   assert(firstFitResult);
 
-  const RooArgList& pars = firstFitResult->floatParsFinal();
+  //const RooArgList& pars = firstFitResult->floatParsFinal();
+  RooArgList pars = firstFitResult->floatParsFinal();
+  pars.add(firstFitResult->constPars());
   std::cout << "I'm going to fit the parameters: " << pars << std::endl;
 
   int nPars = pars.getSize();
@@ -114,13 +116,19 @@ int main(int argc, char **argv) {
     for (int iMass = 0; iMass < nMassPoints; ++iMass) {
       RooFitResult* fit = static_cast<RooFitResult*>((*fitResults)[iMass]);
       assert(fit);
+      RooArgList fitPars = fit->floatParsFinal();
+      fitPars.add(fit->constPars());
       double mass = (*massPoints)[iMass];
-      const RooRealVar* fitVar = static_cast<const RooRealVar*>(
-          fit->floatParsFinal().at(iPar));
+      const RooRealVar* fitVar = static_cast<const RooRealVar*>(fitPars.at(iPar));
       Int_t bin = histo.FindBin(mass);
       histo.SetBinContent(bin, fitVar->getVal());
       histo.SetBinError(bin, fitVar->getError());
     }
+    double minBinCont = histo.GetBinContent(histo.GetMinimumBin());
+    double maxBinCont = histo.GetBinContent(histo.GetMaximumBin());
+    histo.SetMaximum( (maxBinCont > 0) ? maxBinCont*1.1 : maxBinCont*0.9 );
+    histo.SetMinimum( (minBinCont < 0) ? minBinCont*1.1 : minBinCont*0.9 );
+
     parameters[var->GetName()] = histo;
     histo.Draw();
     canvas.Print(summaryFileName.str().c_str());
@@ -128,6 +136,7 @@ int main(int argc, char **argv) {
   std::stringstream summaryFileNameClose;
   summaryFileNameClose << summaryFileName.str() << "]";
   canvas.SaveAs(summaryFileNameClose.str().c_str());
+
   std::stringstream converterCommand;
   converterCommand << "epstopdf " << summaryFileName.str();
   int convertResult = system(converterCommand.str().c_str());
@@ -138,8 +147,6 @@ int main(int argc, char **argv) {
   }
 
   std::cout << "Built histograms." << std::endl;
-
-
 
 
   return 0;

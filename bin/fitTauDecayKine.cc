@@ -423,8 +423,22 @@ struct fitManager
 
 //--- parametrize pt/energy dependence of GMean fitParameter by (orthogonal) Chebyshev polynomials
 //   ( cf. http://mathworld.wolfram.com/ChebyshevPolynomialoftheFirstKind.html )
-    momParametrizationFormulaGMean_   = 
-      "TMath::Abs((1./(x*x*x*x))*([0] + [1]*x + [2]*(2.0*x*x - 1.0) + [3]*(4.0*x*x*x - 3.0*x) + [4]*(8.0*x*x*x*x - 8.0*x*x + 1.0)))";
+    //momParametrizationFormulaGMean_   = 
+    //  "TMath::Abs((1./(x*x*x*x))*([0] + [1]*x + [2]*(2.0*x*x - 1.0) + [3]*(4.0*x*x*x - 3.0*x) + [4]*(8.0*x*x*x*x - 8.0*x*x + 1.0)))";
+    if ( decayMode_ == kElectron_Muon ) {
+      momParametrizationFormulaGMean_ = "[0] + [1]/TMath::Power(x - 10., 2.)";
+      fitParamCoeffGMean_.resize(2);
+    } else if ( decayMode_ == kOneProng0Pi0   ||
+		decayMode_ == kOneProngGt0Pi0 ) {
+      momParametrizationFormulaGMean_ = "[0]";
+      fitParamCoeffGMean_.resize(1);
+    } else if ( decayMode_ == kThreeProng0Pi0 ) {
+      //momParametrizationFormulaGMean_ = "[0] + [1]/TMath::Power(x - 15., 2.)";      
+      //fitParamCoeffGMean_.resize(2);
+      momParametrizationFormulaGMean_ = "[0]";
+      fitParamCoeffGMean_.resize(1);
+    } else throw cms::Exception("fitTauDecayKine")
+	<< "Invalid Configuration Parameter 'decayMode' = " << getDecayMode_string(decayMode_) << " !!\n"; 
     momParametrizationFormulaGSigma_  = "([0] + [1]*x)*(1.0 + [2]*TMath::TanH([3] + [4]*x))";
     momParametrizationFormulaAlpha_   = "[0] + [1]*x";
     momParametrizationFormulaSlope_   = "[0] + [1]*x";
@@ -435,9 +449,9 @@ struct fitManager
 //   ( cf. http://mathworld.wolfram.com/ChebyshevPolynomialoftheFirstKind.html )
     momParametrizationFormulaMP1_     =
       "TMath::Abs((1./(x*x*x*x))*([0] + [1]*x + [2]*(2.0*x*x - 1.0) + [3]*(4.0*x*x*x - 3.0*x) + [4]*(8.0*x*x*x*x - 8.0*x*x + 1.0)))";
-    momParametrizationFormulaWidth1_  = "TMath::Max(1.e-4, [0] + [1]*x)";
+    momParametrizationFormulaWidth1_ = "TMath::Max(5.e-3, [0] + [1]*x)";
     momParametrizationFormulaMP2_     = "[0]*TMath::Min(1., [1]*(x - [2]))";
-    momParametrizationFormulaWidth2_  = "TMath::Min(5.e-2, [0] + [1]*x)";
+    momParametrizationFormulaWidth2_ = "TMath::Max(5.e-3, [0] + [1]*x)";
     momParametrizationFormulaX0_      = "[0] + [1]*x";
     momParametrizationFormulaDeltaX1_ = "[0]*TMath::Min(1., [1]*(x - [2]))";
 
@@ -751,15 +765,27 @@ struct fitManager
       double alphaMin     = -1.e-9;
       double alphaMax     = +1.e-9;
       bool alpha_isConstant = true;
+      //if ( decayMode_ == kElectron_Muon ) {
+      //  alphaInitial = -5.;
+      //  alphaMin     = -1.e+1;
+      //  alphaMax     = +1.e+1;
+      //  alpha_isConstant = false;	
+      //} else
       if ( decayMode_ == kOneProng0Pi0 ) {
 	alphaInitial =  1.e+1;
 	alphaMin     =  0.;
 	alphaMax     = +1.e+2;
 	alpha_isConstant = false;
-      } else if ( decayMode_ == kThreeProng0Pi0 ) {
+      } else if ( decayMode_ == kOneProngGt0Pi0 ) {
 	alphaInitial =  0.;
-	alphaMin     = -1.e+1;
+	//alphaMin     = -1.e+1;
+	alphaMin     = -1.e-1;
 	alphaMax     = +1.e-1;
+	alpha_isConstant = false;
+      } else if ( decayMode_ == kThreeProng0Pi0 ) {
+	alphaInitial = -5.;
+	alphaMin     = -1.e+1;
+	alphaMax     = +1.e+1;
 	alpha_isConstant = false;
       }
       prefitParamAlpha_[iMomBin] = buildPrefitParameter("alpha", momBinName, alphaInitial, alphaMin, alphaMax, alpha_isConstant);
@@ -768,7 +794,13 @@ struct fitManager
       double slopeMin     = 1.e-2/histogramMax_x;
       double slopeMax     = 1.e+2/histogramMax_x;
       bool slope_isConstant = false;
-      if ( decayMode_ == kOneProng0Pi0 ) {
+      if ( decayMode_ == kElectron_Muon ) {
+	slopeInitial = 1./histogramMax_x;
+        slopeMin     = 0.1/histogramMax_x;
+	slopeMax     = 2./histogramMax_x;
+      } else if ( decayMode_ == kOneProng0Pi0   ||
+		  decayMode_ == kOneProngGt0Pi0 ||
+		  decayMode_ == kThreeProng0Pi0 ) {
 	slopeInitial =  0.;
 	slopeMin     = -1.e-9;
 	slopeMax     = +1.e-9;
@@ -790,16 +822,20 @@ struct fitManager
       double Cmin     = 0.;
       double Cmax     = 1.;
       bool C_isConstant = false;
-      if ( decayMode_ == kOneProng0Pi0 ) {
+      if ( decayMode_ == kElectron_Muon ) {
+	Cinitial = 0.5;
+	Cmin     = 0.25;
+      } else if ( decayMode_ == kOneProng0Pi0   ||
+		  decayMode_ == kThreeProng0Pi0 ) {
         Cinitial = 1.;
 	Cmin     = 1. - epsilon;
 	Cmax     = 1. + epsilon;
 	C_isConstant = true;
       }
       prefitParamC_[iMomBin] = buildPrefitParameter("C", momBinName, Cinitial, Cmin, Cmax, C_isConstant);
-      double mp1Initial = 0.;
-      double mp1Min     = 0.;
-      double mp1Max     = 0.;
+      double mp1Initial = histogramMax_x;
+      double mp1Min     = 0.8*histogramMax_x;
+      double mp1Max     = fallingEdge_position;
       double mp1_isConstant = false;
       if ( decayMode_ == kOneProng0Pi0 ) {
 	mp1Initial = histogramMax_x;
@@ -810,17 +846,17 @@ struct fitManager
 	mp1Initial = 0.5*(mp1Min + mp1Max);
 	mp1Min     = 0.6*histogramMax_x;
 	mp1Max     = 0.9*histogramMax_x;
-      } else {
-	mp1Initial = 0.5*(mp1Min + mp1Max);
-	mp1Min     = 0.8*histogramMax_x;
-	mp1Max     = fallingEdge_position;
       }
       prefitParamMP1_[iMomBin] = buildPrefitParameter("mp1", momBinName, mp1Initial, mp1Min, mp1Max, mp1_isConstant);
       double width1Initial = 0.04*histogramRMSgtMax;
-      double width1Min     = 1.e-4;
+      double width1Min     = 5.e-3;
       double width1Max     = 2.0*histogramRMSgtMax;
       bool width1_isConstant = false;
-      if ( decayMode_ == kThreeProng0Pi0 ) {
+      if ( decayMode_ == kElectron_Muon ) {
+	//width1Min = 1.e-3;
+	width1Initial = 1.e-3;
+	width1_isConstant = true;
+      } else if ( decayMode_ == kThreeProng0Pi0 ) {
 	width1Min = 5.e-3;
 	width1Max = 2.0*histogramRMSgtMax;
       }
@@ -860,7 +896,7 @@ struct fitManager
       double dx1Max     = 12. + epsilon;
       bool dx1_isConstant = true;
       if ( decayMode_ == kElectron_Muon ) {
-	dx1Min     = 0.;
+	dx1Min     = 0.5;
 	dx1_isConstant = false;
       } else if ( decayMode_ == kOneProng0Pi0 ) {
 	//dx1Initial = 0.4;
@@ -918,7 +954,9 @@ struct fitManager
 	prefitParamConstraints.Add(x0Constraint_pdf);
       }
 
-      if ( decayMode_ == kElectron_Muon ) {
+      if ( decayMode_ == kElectron_Muon  ||
+	   decayMode_ == kOneProngGt0Pi0 ||
+	   decayMode_ == kThreeProng0Pi0 ) {
 	RooConstVar* dx1Constraint_value =
 	  new RooConstVar("dx1Constraint_value", "dx1Constraint_value", 12.);
 	RooConstVar* dx1Constraint_sigma =
@@ -940,8 +978,10 @@ struct fitManager
 //--- perform stand-alone fit of Gaussian distribution
       std::cout << "--> fitting Gaussian distribution..." << std::endl;
       RooLinkedList options_gaussian(options);
-      double sepTimesMomMin_gaussian = histogramMax_x - 2.*histogramRMSltMax;
-      double sepTimesMomMax_gaussian = histogramMax_x + 2.*histogramRMSgtMax;
+      //double sepTimesMomMin_gaussian = histogramMax_x - 2.*histogramRMSltMax;
+      //double sepTimesMomMax_gaussian = histogramMax_x + 2.*histogramRMSgtMax;
+      double sepTimesMomMin_gaussian = 0.;
+      double sepTimesMomMax_gaussian = fallingEdge_position;
       if ( decayMode_ == kOneProng0Pi0 ) {
 	//sepTimesMomMin_gaussian = prePeak_position_right;
 	//setRealVar_Value_Range(prefitParamPrePeakMixing_[iMomBin], 0., -epsilon, +epsilon);
@@ -1101,6 +1141,7 @@ struct fitManager
   
 //--- CV: map first Landau --> second Landau in case only one Landau distribution is needed to fit the TAUOLA prediction,
 //        in order to make dx1 linearly increasing at low pt/energy
+/*
       if ( (prefitParamX0_[iMomBin]->getVal() + prefitParamDeltaX1_[iMomBin]->getVal()) > 11.5 &&
 	   0.5*(momMin + momMax) < 75. && decayMode_ == kElectron_Muon ) {
 	std::cout << "mapping Landau1 --> Landau2." << std::endl;
@@ -1110,7 +1151,7 @@ struct fitManager
 			       prefitParamWidth1_[iMomBin]->getVal() - epsilon, prefitParamWidth1_[iMomBin]->getVal() + epsilon);
 	setRealVar_Value_Range(prefitParamDeltaX1_[iMomBin], 0., -epsilon, +epsilon);
       }
-
+ */
       printAllPrefitParameter(iMomBin);
 
       prefitModel_[iMomBin]->enableAnalyticIntegration();

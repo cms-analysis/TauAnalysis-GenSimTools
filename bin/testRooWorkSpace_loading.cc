@@ -1,6 +1,6 @@
 
 #include "TauAnalysis/GenSimTools/bin/tauDecayKineAuxFunctions.h"
-#include "TauAnalysis/FittingTools/interface/TauDecayKinePdf.h"
+#include "TauAnalysis/FittingTools/interface/TauDecayKinePdf2.h"
 
 #include "RooRealVar.h"
 #include "RooDataSet.h"
@@ -61,13 +61,13 @@ int main(int argc, const char* argv[])
 
   RooRealVar* sepTimesMom = ws->var(sepTimesMomName.Data());
   std::cout << "--> sepTimesMom  = " << sepTimesMom << std::endl;
-  sepTimesMom->setRange("combined", 0., 12.);
+  sepTimesMom->setRange("combined", 0., 25.);
 
-  TauDecayKinePdf* model = dynamic_cast<TauDecayKinePdf*>(ws->pdf(pdfName.Data()));
+  TauDecayKinePdf2* model = dynamic_cast<TauDecayKinePdf2*>(ws->pdf(pdfName.Data()));
   std::cout << "--> model = " << model << std::endl;
   model->print(std::cout);
 
-  TauDecayKinePdf model_cloned(*model);
+  TauDecayKinePdf2 model_cloned(*model);
 
   TString inputFileName_histograms = "makeTauDecayKinePlots.root";
   
@@ -144,7 +144,7 @@ int main(int argc, const char* argv[])
     toyData->SetName("toyData");
 
     TString frameTitle = Form("P_{T} = %2.1f GeV", *momTestValue);
-    RooPlot* frame = sepTimesMom->frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(120));
+    RooPlot* frame = sepTimesMom->frame(RooFit::Title(frameTitle.Data()), RooFit::Bins(250));
 
     TString xAxisTitle = "";
     if      ( inputDirName.Contains("DeltaR") ) xAxisTitle = "P_{T}^{#tau} * #DeltaR [GeV]";

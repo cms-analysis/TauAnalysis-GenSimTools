@@ -32,8 +32,8 @@ TH1* bookHistogram(const TString& decayMode, const TString& variable, const TStr
   TString histogramTitle = 
     Form("%s %s %s: %s%2.0f..%2.0f", variable.Data(), decayMode.Data(), label.Data(), momTitle_string.Data(), momMin, momMax);
   bool isTimesMom = (variable.Contains("TimesPt") || variable.Contains("TimesEnergy"));
-  double xMax = ( isTimesMom ) ? 12.0 : 1.0;
-  TH1* histogram = new TH1F(histogramName.Data(), histogramTitle.Data(), 120, 0., xMax);
+  double xMax = ( isTimesMom ) ? 25.0 : 1.0;
+  TH1* histogram = new TH1F(histogramName.Data(), histogramTitle.Data(), 250, 0., xMax);
   return histogram;
 }
 
@@ -274,7 +274,6 @@ int main(int argc, const char* argv[])
   TArrayD momBinning_all = getBinningMom("Electron_Muon", "all");
   TArrayD momBinning_selected = getBinningMom("Electron_Muon", "selected");
   TArrayD sepBinning = getBinningSep();
-  TArrayD sepTimesMomBinning = getBinningSepTimesMom();
 
 //--- stop RooT from keeping references to all histograms
   TH1::AddDirectory(false); 

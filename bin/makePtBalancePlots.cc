@@ -31,9 +31,7 @@
 #include "RooBifurGauss.h"
 #include "RooGamma.h"
 #include "RooMsgService.h"
-#include "TauAnalysis/FittingTools/interface/RooSkewNormal.h"
-
-//#include "TauAnalysis/CandidateTools/interface/NSVfitPtBalancePdfs.h"
+#include "TauAnalysis/CandidateTools/interface/RooSkewNormal.h"
 
 using namespace RooFit;
 

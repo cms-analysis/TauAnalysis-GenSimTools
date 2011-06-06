@@ -1,6 +1,6 @@
 
 #include "TauAnalysis/GenSimTools/bin/tauDecayKineAuxFunctions.h"
-#include "TauAnalysis/FittingTools/interface/TauDecayKinePdf2.h"
+#include "TauAnalysis/CandidateTools/interface/TauDecayKinePdf2.h"
 
 #include "RooRealVar.h"
 #include "RooDataSet.h"
@@ -45,7 +45,7 @@ int main(int argc, const char* argv[])
   std::cout << " sepTimesMomName = " << sepTimesMomName.Data() << std::endl;
   TString inputFileName_ws_base = inputFileName_ws;
   if ( inputFileName_ws_base.Last('/') != kNPOS ) inputFileName_ws_base.Replace(0, inputFileName_ws_base.Last('/') + 1, "", 0);
-  TString outputFileName = Form("testRooWorkSpace_loading_%s", inputFileName_ws_base.Data());
+  TString outputFileName = Form("plots/testRooWorkSpace_loading_%s", inputFileName_ws_base.Data());
   outputFileName = outputFileName.ReplaceAll(".root", ".png");
   std::cout << " outputFileName = " << outputFileName.Data() << std::endl;
   

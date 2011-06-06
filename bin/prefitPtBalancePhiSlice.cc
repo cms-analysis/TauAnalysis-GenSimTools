@@ -18,8 +18,8 @@
 #include "RooDataSet.h"
 #include "RooFitResult.h"
 #include "RooFormulaVar.h"
-#include "TauAnalysis/FittingTools/interface/RooAbsEstimatablePdf.h"
-#include "TauAnalysis/FittingTools/interface/RooCruijff.h"
+#include "TauAnalysis/CandidateTools/interface/RooAbsEstimatablePdf.h"
+#include "TauAnalysis/CandidateTools/interface/RooCruijff.h"
 
 using namespace RooFit;
 namespace po = boost::program_options;

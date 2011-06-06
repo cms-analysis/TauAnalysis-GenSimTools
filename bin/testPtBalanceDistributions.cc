@@ -36,11 +36,9 @@
 #include "RooVoigtian.h"
 #include "RooLognormal.h"
 #include "RooMsgService.h"
-#include "TauAnalysis/FittingTools/interface/RooSkewNormal.h"
-#include "TauAnalysis/FittingTools/interface/RooSmearedIsotropicDecayPdf.h"
-#include "TauAnalysis/FittingTools/interface/RooBifurGeneralizedExp.h"
-
-//#include "TauAnalysis/CandidateTools/interface/NSVfitPtBalancePdfs.h"
+#include "TauAnalysis/CandidateTools/interface/RooSkewNormal.h"
+#include "TauAnalysis/CandidateTools/interface/RooSmearedIsotropicDecayPdf.h"
+#include "TauAnalysis/CandidateTools/interface/RooBifurGeneralizedExp.h"
 
 using namespace RooFit;
 

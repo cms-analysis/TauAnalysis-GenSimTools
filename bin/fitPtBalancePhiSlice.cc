@@ -13,7 +13,7 @@
 #include "RooDataHist.h"
 #include "RooFitResult.h"
 #include "RooFormulaVar.h"
-#include "TauAnalysis/FittingTools/interface/TauDecayKinePdf.h"
+#include "TauAnalysis/CandidateTools/interface/TauDecayKinePdf.h"
 
 using namespace RooFit;
 namespace po = boost::program_options;

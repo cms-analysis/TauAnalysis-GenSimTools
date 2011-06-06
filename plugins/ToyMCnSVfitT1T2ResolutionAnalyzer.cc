@@ -15,8 +15,12 @@
 #include "DataFormats/PatCandidates/interface/Tau.h"
 #include "DataFormats/Math/interface/normalizedPhi.h"
 
+#include "AnalysisDataFormats/TauAnalysis/interface/NSVfitEventHypothesisBase.h"
+#include "AnalysisDataFormats/TauAnalysis/interface/NSVfitEventHypothesisBaseFwd.h"
 #include "AnalysisDataFormats/TauAnalysis/interface/NSVfitEventHypothesis.h"
-#include "AnalysisDataFormats/TauAnalysis/interface/NSVfitEventHypothesisFwd.h"
+#include "AnalysisDataFormats/TauAnalysis/interface/NSVfitResonanceHypothesis.h"
+#include "AnalysisDataFormats/TauAnalysis/interface/NSVfitResonanceHypothesisByIntegration.h"
+#include "AnalysisDataFormats/TauAnalysis/interface/NSVfitSingleParticleHypothesis.h"
 
 #include <TMath.h>
 
@@ -109,7 +113,7 @@ reco::Candidate::LorentzVector getGenP4<pat::Tau>(const NSVfitSingleParticleHypo
 template<typename T1, typename T2>
 void ToyMCnSVfitT1T2ResolutionAnalyzer<T1,T2>::analyze(const edm::Event& evt, const edm::EventSetup& es)
 {
-  edm::Handle<NSVfitEventHypothesisCollection> nSVfitEventHypotheses;
+  edm::Handle<NSVfitEventHypothesisBaseCollection> nSVfitEventHypotheses;
   evt.getByLabel(srcNSVfitEventHypothesis_, nSVfitEventHypotheses);
 
   if ( nSVfitEventHypotheses->size() != 1 ) {
@@ -130,52 +134,57 @@ void ToyMCnSVfitT1T2ResolutionAnalyzer<T1,T2>::analyze(const edm::Event& evt, co
 
   double genMass = (genParticles->at(0).p4() + genParticles->at(1).p4()).mass();
 
-  for ( NSVfitEventHypothesisCollection::const_iterator nSVfitEventHypothesis = nSVfitEventHypotheses->begin();
+  for ( NSVfitEventHypothesisBaseCollection::const_iterator nSVfitEventHypothesis = nSVfitEventHypotheses->begin();
 	nSVfitEventHypothesis != nSVfitEventHypotheses->end(); ++nSVfitEventHypothesis ) {
 
-    const edm::OwnVector<NSVfitResonanceHypothesis>& resonances = nSVfitEventHypothesis->resonances();     
-    assert(resonances.size() == 1);
-    if ( !resonances[0].isValidSolution() ) continue;
-    const edm::OwnVector<NSVfitSingleParticleHypothesisBase>& daughters = resonances[0].daughters();
-    assert(daughters.size() == 2);
+    size_t numResonances = nSVfitEventHypothesis->numResonances();   
+    assert(numResonances == 1);
+    const NSVfitResonanceHypothesisBase* resonance = nSVfitEventHypothesis->resonance(0);
 
-    const NSVfitSingleParticleHypothesisBase* leg1 = resonances[0].daughter("leg1");
-    reco::Candidate::LorentzVector p4RecLeg1 = leg1->p4();
-    reco::Candidate::LorentzVector p4GenLeg1 = getGenP4<T1>(leg1);
-    hGenLeg1Pt_->Fill(p4GenLeg1.pt());
-    hRecLeg1Pt_->Fill(p4RecLeg1.pt());
-    if ( p4GenLeg1.pt() > 0. ) hDeltaLeg1Pt_->Fill((p4RecLeg1.pt() - p4GenLeg1.pt())/p4GenLeg1.pt());
+    hIsValidSolution_->Fill(resonance->isValidSolution());
 
-    const NSVfitSingleParticleHypothesisBase* leg2 = resonances[0].daughter("leg2");
-    reco::Candidate::LorentzVector p4RecLeg2 = leg2->p4();
-    reco::Candidate::LorentzVector p4GenLeg2 = getGenP4<T2>(leg2);
-    hGenLeg2Pt_->Fill(p4GenLeg2.pt());
-    hRecLeg2Pt_->Fill(p4RecLeg2.pt());
-    if ( p4GenLeg2.pt() > 0. ) hDeltaLeg2Pt_->Fill((p4RecLeg2.pt() - p4GenLeg2.pt())/p4GenLeg2.pt());
+    if ( !resonance->isValidSolution() ) continue;
 
-    hDPhi_->Fill(TMath::Abs(normalizedPhi(p4RecLeg1.phi() - p4RecLeg2.phi())));
+    size_t numDaughters = resonance->numDaughters();   
+    assert(numDaughters == 2);
+    const NSVfitSingleParticleHypothesisBase* daughter1 = resonance->daughter(0);
+    const NSVfitSingleParticleHypothesisBase* daughter2 = resonance->daughter(1);
 
-    reco::Candidate::LorentzVector p4RecMEt = nSVfitEventHypothesis->p4MEt();
+    reco::Candidate::LorentzVector p4VisRecLeg1 = daughter1->particle()->p4();
+    reco::Candidate::LorentzVector p4VisGenLeg1 = getGenP4<T1>(daughter1);
+    hGenLeg1Pt_->Fill(p4VisGenLeg1.pt());
+    hRecLeg1Pt_->Fill(p4VisRecLeg1.pt());
+    if ( p4VisGenLeg1.pt() > 0. ) hDeltaLeg1Pt_->Fill((p4VisRecLeg1.pt() - p4VisGenLeg1.pt())/p4VisGenLeg1.pt());
+    
+    reco::Candidate::LorentzVector p4VisRecLeg2 = daughter2->particle()->p4();
+    reco::Candidate::LorentzVector p4VisGenLeg2 = getGenP4<T2>(daughter2);
+    hGenLeg2Pt_->Fill(p4VisGenLeg2.pt());
+    hRecLeg2Pt_->Fill(p4VisRecLeg2.pt());
+    if ( p4VisGenLeg2.pt() > 0. ) hDeltaLeg2Pt_->Fill((p4VisRecLeg2.pt() - p4VisGenLeg2.pt())/p4VisGenLeg2.pt());
+
+    hDPhi_->Fill(TMath::Abs(normalizedPhi(p4VisRecLeg1.phi() - p4VisRecLeg2.phi())));
+    
+    reco::Candidate::LorentzVector p4RecMEt = nSVfitEventHypothesis->met()->p4();
     const pat::MET* toyMEt = dynamic_cast<const pat::MET*>(nSVfitEventHypothesis->met().get());
     assert(toyMEt && toyMEt->genMET());
     reco::Candidate::LorentzVector p4GenMEt = toyMEt->genMET()->p4();
     hGenMEt_->Fill(p4GenMEt.pt());
     hRecMEt_->Fill(p4RecMEt.pt());
     if ( p4GenMEt.pt() > 0. ) hDeltaMEt_->Fill((p4RecMEt.pt() - p4GenMEt.pt())/p4GenMEt.pt());
-    
-    hIsValidSolution_->Fill(resonances[0].isValidSolution());
 
-    if ( resonances[0].isValidSolution() ) {
+    if ( dynamic_cast<const NSVfitResonanceHypothesisByIntegration*>(resonance) ) {
+      const NSVfitResonanceHypothesisByIntegration* resonance_byIntegration = 
+	dynamic_cast<const NSVfitResonanceHypothesisByIntegration*>(resonance);
       hGenMass_->Fill(genMass);
-      hRecMassMedian_->Fill(resonances[0].mass_median());
+      hRecMassMedian_->Fill(resonance_byIntegration->mass_median());
       if ( genMass > 0. ) {
-	hDeltaMassMedian_->Fill((resonances[0].mass_median() - genMass)/genMass);
-	hDeltaMassMedianS_->Fill((resonances[0].mass_median() - genMass)/genMass);
+	hDeltaMassMedian_->Fill((resonance_byIntegration->mass_median() - genMass)/genMass);
+	hDeltaMassMedianS_->Fill((resonance_byIntegration->mass_median() - genMass)/genMass);
       }
-      hRecMassMax_->Fill(resonances[0].mass_maxInterpol());
+      hRecMassMax_->Fill(resonance_byIntegration->mass_maxInterpol());
       if ( genMass > 0. ) {
-	hDeltaMassMax_->Fill((resonances[0].mass_maxInterpol() - genMass)/genMass);
-	hDeltaMassMaxS_->Fill((resonances[0].mass_maxInterpol() - genMass)/genMass);
+	hDeltaMassMax_->Fill((resonance_byIntegration->mass_maxInterpol() - genMass)/genMass);
+	hDeltaMassMaxS_->Fill((resonance_byIntegration->mass_maxInterpol() - genMass)/genMass);
       }
     }
   }

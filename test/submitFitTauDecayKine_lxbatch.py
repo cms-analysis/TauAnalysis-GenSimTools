@@ -80,7 +80,7 @@ cd %(submissionDirectory)s
 setenv SCRAM_ARCH %(architecture)s
 eval `scram runtime -csh`
 cd -
-set fileNames=(`%(nslsCommand)s`)
+#set fileNames=(`%(nslsCommand)s`)
 #foreach fileName (${fileNames})
 #    echo "copying fileName %(inputFilePath)s/${fileName} --> ./${fileName}"
 #    rfcp %(inputFilePath)s/${fileName} ./${fileName}

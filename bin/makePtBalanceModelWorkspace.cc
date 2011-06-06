@@ -12,9 +12,9 @@
 #include "RooGamma.h"
 #include "RooConstVar.h"
 
-#include "TauAnalysis/FittingTools/interface/RooSkewNormal.h"
-#include "TauAnalysis/FittingTools/interface/TauDecayKinePdf.h"
-#include "TauAnalysis/FittingTools/interface/RooCruijff.h"
+#include "TauAnalysis/CandidateTools/interface/RooSkewNormal.h"
+#include "TauAnalysis/CandidateTools/interface/TauDecayKinePdf.h"
+#include "TauAnalysis/CandidateTools/interface/RooCruijff.h"
 
 using namespace RooFit;
 namespace po = boost::program_options;

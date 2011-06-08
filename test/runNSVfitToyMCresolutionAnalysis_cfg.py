@@ -15,7 +15,7 @@ process.MessageLogger.suppressWarning = cms.untracked.vstring("PATTriggerProduce
 process.load('Configuration/StandardSequences/GeometryIdeal_cff')
 process.load('Configuration/StandardSequences/MagneticField_cff')
 process.load('Configuration/StandardSequences/FrontierConditions_GlobalTag_cff')
-process.GlobalTag.globaltag = cms.string('START38_V14::All')
+process.GlobalTag.globaltag = cms.string('START311_V2::All')
 
 #--------------------------------------------------------------------------------
 # produce "toy" Monte Carlo pat::Electron, pat::Muon and pat::Tau objects
@@ -170,14 +170,19 @@ nSVfitRESoptions = {
 }
 
 nSVfitLLoptions = {
-    'psKineMEt'          : cms.VPSet(),
-    'psKineMEtPtBalance' : cms.VPSet(process.nSVfitResonanceLikelihoodPtBalance)
+    'psKineMEt'     : cms.VPSet(),
+    'psKineMEtLogM' : cms.VPSet(process.nSVfitResonanceLikelihoodLogM)
 }    
+
+#nSVfitProducer_template = process.nSVfitProducerByIntegration
+nSVfitProducer_template = process.nSVfitProducerByLikelihoodMaximization
 
 for optRESnSVfitName, optRESnSVfit in nSVfitRESoptions.items():
 
     # adjust MET likelihood to "toy" Monte Carlo resolution
-    nSVfitEventLikelihoodMEt_customized = process.nSVfitEventLikelihoodMEt.clone(
+    nSVfitEventLikelihoodMEt_customized = cms.PSet(
+        pluginName = cms.string("nSVfitEventLikelihoodMEt"),
+        pluginType = cms.string("NSVfitEventLikelihoodMEt"),
         resolution = cms.PSet(
             parSigma = optRESnSVfit['metResolutionX'],
             parBias = cms.string("0."),
@@ -189,13 +194,15 @@ for optRESnSVfitName, optRESnSVfit in nSVfitRESoptions.items():
         
     for optLLnSVfitName, optLLnSVfit in nSVfitLLoptions.items():
                 
-        nSVfitElecMuPairHypotheses = copy.deepcopy(process.nSVfitProducer)
-        nSVfitElecMuPairHypotheses.config.event.resonances.A.daughters.leg1 = process.nSVfitConfig.event.resonances.A.daughters.leg1.clone(
+        nSVfitElecMuPairHypotheses = copy.deepcopy(nSVfitProducer_template)
+        nSVfitElecMuPairHypotheses.config.event.resonances.A.daughters.leg1 = \
+          process.nSVfitConfig_template.event.resonances.A.daughters.leg1.clone(
             src = optRESnSVfit['srcElectrons'],
             likelihoodFunctions = cms.VPSet(process.nSVfitElectronLikelihoodPhaseSpace),
             builder = process.nSVfitTauToElecBuilder
         )
-        nSVfitElecMuPairHypotheses.config.event.resonances.A.daughters.leg2 = process.nSVfitConfig.event.resonances.A.daughters.leg2.clone(
+        nSVfitElecMuPairHypotheses.config.event.resonances.A.daughters.leg2 = \
+          process.nSVfitConfig_template.event.resonances.A.daughters.leg2.clone(
             src = optRESnSVfit['srcMuons'],
             likelihoodFunctions = cms.VPSet(process.nSVfitMuonLikelihoodPhaseSpace),
             builder = process.nSVfitTauToMuBuilder
@@ -206,37 +213,41 @@ for optRESnSVfitName, optRESnSVfit in nSVfitRESoptions.items():
         setattr(process, composeModuleName(["nSVfitElecMuPairHypotheses", optRESnSVfitName, optLLnSVfitName]), nSVfitElecMuPairHypotheses)
         optRESnSVfit['sequence'] += nSVfitElecMuPairHypotheses
 
-        nSVfitMuTauPairHypotheses = copy.deepcopy(process.nSVfitProducer)
-        nSVfitMuTauPairHypotheses.config.event.resonances.A.daughters.leg1 = process.nSVfitConfig.event.resonances.A.daughters.leg1.clone(
+        nSVfitMuTauPairHypotheses = copy.deepcopy(nSVfitProducer_template)
+        nSVfitMuTauPairHypotheses.config.event.resonances.A.daughters.leg1 = \
+          process.nSVfitConfig_template.event.resonances.A.daughters.leg1.clone(
             src = optRESnSVfit['srcMuons'],
             likelihoodFunctions = cms.VPSet(process.nSVfitMuonLikelihoodPhaseSpace),
             builder = process.nSVfitTauToMuBuilder
         )
-        nSVfitMuTauPairHypotheses.config.event.resonances.A.daughters.leg2 = process.nSVfitConfig.event.resonances.A.daughters.leg2.clone(
+        nSVfitMuTauPairHypotheses.config.event.resonances.A.daughters.leg2 = \
+          process.nSVfitConfig_template.event.resonances.A.daughters.leg2.clone(
             src = optRESnSVfit['srcTaus'],
             likelihoodFunctions = cms.VPSet(process.nSVfitTauLikelihoodPhaseSpace),
             builder = process.nSVfitTauToHadBuilder
         )
         nSVfitMuTauPairHypotheses.config.event.resonances.A.likelihoodFunctions = optLLnSVfit
         nSVfitMuTauPairHypotheses.config.event.srcMEt = optRESnSVfit['srcMEt']
-        nSVfitElecMuPairHypotheses.config.event.likelihoodFunctions = cms.VPSet(nSVfitEventLikelihoodMEt_customized)
+        nSVfitMuTauPairHypotheses.config.event.likelihoodFunctions = cms.VPSet(nSVfitEventLikelihoodMEt_customized)
         setattr(process, composeModuleName(["nSVfitMuTauPairHypotheses", optRESnSVfitName, optLLnSVfitName]), nSVfitMuTauPairHypotheses)
         optRESnSVfit['sequence'] += nSVfitMuTauPairHypotheses
 
-        nSVfitDiTauPairHypotheses = copy.deepcopy(process.nSVfitProducer)
-        nSVfitDiTauPairHypotheses.config.event.resonances.A.daughters.leg1 = process.nSVfitConfig.event.resonances.A.daughters.leg1.clone(
+        nSVfitDiTauPairHypotheses = copy.deepcopy(nSVfitProducer_template)
+        nSVfitDiTauPairHypotheses.config.event.resonances.A.daughters.leg1 = \
+          process.nSVfitConfig_template.event.resonances.A.daughters.leg1.clone(
             src = optRESnSVfit['srcTaus'],
             likelihoodFunctions = cms.VPSet(process.nSVfitTauLikelihoodPhaseSpace),
             builder = process.nSVfitTauToHadBuilder
         )
-        nSVfitDiTauPairHypotheses.config.event.resonances.A.daughters.leg2 = process.nSVfitConfig.event.resonances.A.daughters.leg2.clone(
+        nSVfitDiTauPairHypotheses.config.event.resonances.A.daughters.leg2 = \
+          process.nSVfitConfig_template.event.resonances.A.daughters.leg2.clone(
             src = optRESnSVfit['srcTaus'],
             likelihoodFunctions = cms.VPSet(process.nSVfitTauLikelihoodPhaseSpace),
             builder = process.nSVfitTauToHadBuilder
         )
         nSVfitDiTauPairHypotheses.config.event.resonances.A.likelihoodFunctions = optLLnSVfit
         nSVfitDiTauPairHypotheses.config.event.srcMEt = optRESnSVfit['srcMEt']
-        nSVfitElecMuPairHypotheses.config.event.likelihoodFunctions = cms.VPSet(nSVfitEventLikelihoodMEt_customized)
+        nSVfitDiTauPairHypotheses.config.event.likelihoodFunctions = cms.VPSet(nSVfitEventLikelihoodMEt_customized)
         setattr(process, composeModuleName(["nSVfitDiTauPairHypotheses", optRESnSVfitName, optLLnSVfitName]), nSVfitDiTauPairHypotheses)
         optRESnSVfit['sequence'] += nSVfitDiTauPairHypotheses
 
@@ -287,8 +298,7 @@ process.maxEvents = cms.untracked.PSet(
 
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(
-        #'file:/data1/friis/CMSSW_3_8_x/skims/ZtoMuTau/skim_Ztautau_powheg_chunk_8_fcc0.root'
-        'file:/data1/veelken/CMSSW_3_8_x/skims/test/mcZtautauPU156bx_pythiaD6T_1kEvents_1_1_2MW.root'                        
+        'file:/data2/veelken/CMSSW_4_1_x/skims/ZtoMuTau/DYtautau_spring11_powhegZ2_1_1_XvY.root'
     )
 )
 
@@ -302,12 +312,18 @@ process.o = cms.Path(
     process.produceToyParticles
 )
 
-process.p1 = cms.Path(process.runIdealResolution)
-process.p2 = cms.Path(process.runRealisticResolution)
+# before starting to process 1st event, print event content
+process.printEventContent = cms.EDAnalyzer("EventContentAnalyzer")
+process.filterFirstEvent = cms.EDFilter("EventCountFilter",
+    numEvents = cms.int32(1)
+)
+process.p1 = cms.Path(process.filterFirstEvent + process.printEventContent)
+process.p2 = cms.Path(process.runIdealResolution)
+process.p3 = cms.Path(process.runRealisticResolution)
 
 process.q = cms.EndPath(process.savePlots)
 
-process.s = cms.Schedule(process.o, process.p1, process.p2, process.q)
+process.s = cms.Schedule(process.o, process.p1, process.p2, process.p3, process.q)
 
 # print-out all python configuration parameter information
 #print process.dumpPython()

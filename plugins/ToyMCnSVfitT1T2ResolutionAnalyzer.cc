@@ -6,6 +6,7 @@
 #include "DQMServices/Core/interface/DQMStore.h"
 
 #include "DataFormats/Common/interface/Handle.h"
+#include "DataFormats/Common/interface/View.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticleFwd.h"
 #include "DataFormats/Candidate/interface/Candidate.h" 
@@ -113,7 +114,8 @@ reco::Candidate::LorentzVector getGenP4<pat::Tau>(const NSVfitSingleParticleHypo
 template<typename T1, typename T2>
 void ToyMCnSVfitT1T2ResolutionAnalyzer<T1,T2>::analyze(const edm::Event& evt, const edm::EventSetup& es)
 {
-  edm::Handle<NSVfitEventHypothesisBaseCollection> nSVfitEventHypotheses;
+  typedef edm::View<NSVfitEventHypothesisBase> NSVfitEventHypothesisBaseView;
+  edm::Handle<NSVfitEventHypothesisBaseView> nSVfitEventHypotheses;
   evt.getByLabel(srcNSVfitEventHypothesis_, nSVfitEventHypotheses);
 
   if ( nSVfitEventHypotheses->size() != 1 ) {
@@ -134,7 +136,7 @@ void ToyMCnSVfitT1T2ResolutionAnalyzer<T1,T2>::analyze(const edm::Event& evt, co
 
   double genMass = (genParticles->at(0).p4() + genParticles->at(1).p4()).mass();
 
-  for ( NSVfitEventHypothesisBaseCollection::const_iterator nSVfitEventHypothesis = nSVfitEventHypotheses->begin();
+  for ( NSVfitEventHypothesisBaseView::const_iterator nSVfitEventHypothesis = nSVfitEventHypotheses->begin();
 	nSVfitEventHypothesis != nSVfitEventHypotheses->end(); ++nSVfitEventHypothesis ) {
 
     size_t numResonances = nSVfitEventHypothesis->numResonances();   

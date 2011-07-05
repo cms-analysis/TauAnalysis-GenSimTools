@@ -95,7 +95,7 @@ int getMatchingGenParticlePdgId(const reco::Particle::LorentzVector& recoMomentu
 
 //--- find highest Pt matching genParticle
   double ptMax = -1.;
-  int pdgId = -1;
+  int pdgId = 0;
   for ( reco::GenParticleCollection::const_iterator matchingGenParticle = matchingGenParticles.begin();
 	matchingGenParticle != matchingGenParticles.end(); ++matchingGenParticle ) {
 

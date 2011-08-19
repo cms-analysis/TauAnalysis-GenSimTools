@@ -3,11 +3,16 @@
 #include "DataFormats/Common/interface/Handle.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticleFwd.h"
+#include "DataFormats/PatCandidates/interface/Electron.h"
+#include "DataFormats/PatCandidates/interface/Muon.h"
+#include "DataFormats/PatCandidates/interface/Tau.h"
 #include "DataFormats/PatCandidates/interface/MET.h"
 #include "DataFormats/METReco/interface/MET.h"
 #include "DataFormats/METReco/interface/GenMET.h"
 
 #include "TauAnalysis/CandidateTools/interface/candidateAuxFunctions.h"
+
+#include <TMath.h>
 
 ToyPATMEtProducer::ToyPATMEtProducer(const edm::ParameterSet& cfg)
 { 

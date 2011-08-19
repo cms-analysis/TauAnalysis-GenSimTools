@@ -11,6 +11,7 @@
   <use   name="DataFormats/JetReco"/>
   <use   name="DataFormats/METReco"/>
   <use   name="DataFormats/Math"/>
+  <use   name="DataFormats/PatCandidates"/>
   <use   name="PhysicsTools/HepMCCandAlgos"/>
   <use   name="PhysicsTools/JetMCUtils"/>
   <use   name="PhysicsTools/PatUtils"/>
@@ -20,4 +21,6 @@
   <use   name="TauAnalysis/CandidateTools"/>
   <use   name="TauAnalysis/GenSimTools"/>
   <use   name="AnalysisDataFormats/TauAnalysis"/>
+  <use   name="DataFormats/PatCandidates"/>
+  <use   name="root"/>
 </library>

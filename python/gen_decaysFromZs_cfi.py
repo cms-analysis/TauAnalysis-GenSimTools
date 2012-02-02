@@ -1,5 +1,7 @@
 import FWCore.ParameterSet.Config as cms
 
+from SimGeneral.HepPDTESSource.pythiapdt_cfi import *
+
 #--------------------------------------------------------------------------------
 # select collections of generated electrons, muons and tau leptons
 # resulting from Z boson decays

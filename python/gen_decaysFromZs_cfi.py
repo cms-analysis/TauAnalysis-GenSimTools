@@ -51,7 +51,6 @@ genZdecayToTaus = cms.EDProducer("CandViewShallowCloneCombiner",
     decay = cms.string("genTausFromZs@+ genTausFromZs@-")
 )
 
-
 #--------------------------------------------------------------------------------
 # match tau leptons resulting from Z boson decays to generator level tau-jets
 #--------------------------------------------------------------------------------

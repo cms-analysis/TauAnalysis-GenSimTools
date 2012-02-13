@@ -53,6 +53,12 @@ genTausFromAHs = cms.EDProducer("GenParticlePruner",
   )
 )
 
+genAHdecayToTaus = cms.EDProducer("CandViewShallowCloneCombiner",
+    checkCharge = cms.bool(True),
+    cut = cms.string('charge = 0'),
+    decay = cms.string("genTausFromAHs@+ genTausFromAHs@-")
+)
+
 #--------------------------------------------------------------------------------
 # match tau leptons resulting from A/H Higgs decays to generator level tau-jets
 #--------------------------------------------------------------------------------
@@ -132,6 +138,7 @@ genHadronsFromAHtautauDecaysWithinAcceptance = cms.EDFilter("GenJetSelector",
 produceGenDecayProductsFromAHs = cms.Sequence(
     genParticlesFromAHs
    * genElectronsFromAHs * genMuonsFromAHs * genTausFromAHs
+   * genAHdecayToTaus
    * genTauJetsFromAHs  
    * genElectronsFromAHtautauDecays * genElectronsFromAHtautauDecaysWithinAcceptance
    * genMuonsFromAHtautauDecays * genMuonsFromAHtautauDecaysWithinAcceptance

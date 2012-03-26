@@ -93,7 +93,7 @@ void GenParticlesFromZsSelector::produce(edm::Event& evt, const edm::EventSetup&
 //    
 //    NOTE: in order to avoid ambiguities, give preference to l+ l- pairs
 //          which are subsequent in HepEVT record
-
+//
   for ( vint::const_iterator pdgIdDaughter = pdgIdsDaughters_.begin();
 	pdgIdDaughter != pdgIdsDaughters_.end(); ++pdgIdDaughter ) {
     findGenParticles(*genParticles, *pdgIdDaughter, minDaughters_, true, *genParticlesFromZs);

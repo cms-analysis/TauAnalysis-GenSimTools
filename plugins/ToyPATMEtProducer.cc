@@ -16,7 +16,11 @@
 
 ToyPATMEtProducer::ToyPATMEtProducer(const edm::ParameterSet& cfg)
 { 
-  srcGenParticles_ = cfg.getParameter<edm::InputTag>("srcGenParticles");
+  if ( cfg.exists("srcGenMEt") ) {
+    srcGenMEt_ = cfg.getParameter<edm::InputTag>("srcGenMEt");
+  } else {
+    srcGenParticles_ = cfg.getParameter<edm::InputTag>("srcGenParticles");
+  }
 
   if ( cfg.exists("srcElectrons") ) srcElectrons_ = cfg.getParameter<edm::InputTag>("srcElectrons");
   if ( cfg.exists("srcMuons")     ) srcMuons_     = cfg.getParameter<edm::InputTag>("srcMuons"); 
@@ -37,24 +41,37 @@ void ToyPATMEtProducer::produce(edm::Event& evt, const edm::EventSetup& es)
 {
   //std::cout << "<ToyPATMEtProducer::produce>:" << std::endl;
 
-  reco::Candidate::LorentzVector metP4;
-
-  edm::Handle<reco::GenParticleCollection> genParticles;
-  evt.getByLabel(srcGenParticles_, genParticles);
-  for ( reco::GenParticleCollection::const_iterator genParticle = genParticles->begin();
-	genParticle != genParticles->end(); ++genParticle ) {
-    metP4 += getInvisMomentum(&(*genParticle));
+  reco::Candidate::LorentzVector genMEtP4;
+  if ( srcGenMEt_.label() != "" ) {
+    typedef edm::View<reco::MET> METView;
+    edm::Handle<METView> genMEt;
+    evt.getByLabel(srcGenMEt_, genMEt);
+    if ( !genMEt->size() == 1 ) 
+      throw cms::Exception("ToyPATMEtProducer::produce") 
+	<< "Failed to find unique gen. MET object !!\n";
+    genMEtP4 = genMEt->front().p4();
+  } else {
+    edm::Handle<reco::GenParticleCollection> genParticles;
+    evt.getByLabel(srcGenParticles_, genParticles);
+    for ( reco::GenParticleCollection::const_iterator genParticle = genParticles->begin();
+	  genParticle != genParticles->end(); ++genParticle ) {
+      if ( genParticle->status() == 1 && isNeutrino(&(*genParticle)) ) genMEtP4 += genParticle->p4();
+    }
   }
-
-  reco::Candidate::LorentzVector genMEtP4 = metP4;
   
+  double metPx = rnd_.Gaus(0., resolutionX_);
+  double metPy = rnd_.Gaus(0., resolutionY_);
+
   if ( srcElectrons_.label() != "" ) {
     edm::Handle<pat::ElectronCollection> patElectrons;
     evt.getByLabel(srcElectrons_, patElectrons);
     for ( pat::ElectronCollection::const_iterator patElectron = patElectrons->begin();
 	  patElectron != patElectrons->end(); ++patElectron ) {
-      assert(patElectron->genLepton());
-      metP4 -= (patElectron->p4() - patElectron->genLepton()->p4());
+      if ( patElectron->genLepton() ) {
+	reco::Candidate::LorentzVector genElectronMomentum = patElectron->genLepton()->p4();
+	metPx -= (patElectron->px() - genElectronMomentum.px());
+	metPy -= (patElectron->py() - genElectronMomentum.py());
+      }
     }
   }
 
@@ -63,8 +80,11 @@ void ToyPATMEtProducer::produce(edm::Event& evt, const edm::EventSetup& es)
     evt.getByLabel(srcMuons_, patMuons);
     for ( pat::MuonCollection::const_iterator patMuon = patMuons->begin();
 	  patMuon != patMuons->end(); ++patMuon ) {
-      assert(patMuon->genLepton());
-      metP4 -= (patMuon->p4() - patMuon->genLepton()->p4());
+      if ( patMuon->genLepton() ) { 
+	reco::Candidate::LorentzVector genMuonMomentum = patMuon->genLepton()->p4();
+	metPx -= (patMuon->px() - genMuonMomentum.px());
+	metPy -= (patMuon->py() - genMuonMomentum.py());
+      }
     }
   }
   
@@ -73,14 +93,14 @@ void ToyPATMEtProducer::produce(edm::Event& evt, const edm::EventSetup& es)
     evt.getByLabel(srcTaus_, patTaus);
     for ( pat::TauCollection::const_iterator patTau = patTaus->begin();
 	  patTau != patTaus->end(); ++patTau ) {
-      assert(patTau->genJet());
-      metP4 -= (patTau->p4() - getVisMomentum(patTau->genJet()->getGenConstituents()));
+      if ( patTau->genJet() ) {
+	reco::Candidate::LorentzVector genTauMomentum = getVisMomentum(patTau->genJet()->getGenConstituents());
+	metPx -= (patTau->px() - genTauMomentum.px());
+	metPy -= (patTau->py() - genTauMomentum.py());
+      }
     }
   }
   
-  double metPx = rnd_.Gaus(metP4.px(), resolutionX_);
-  double metPy = rnd_.Gaus(metP4.py(), resolutionY_);
-
   std::auto_ptr<pat::METCollection> patMETs(new pat::METCollection());
   reco::MET met;
   met.setP4(reco::Candidate::LorentzVector(metPx, metPy, 0., TMath::Sqrt(metPx*metPx + metPy*metPy)));

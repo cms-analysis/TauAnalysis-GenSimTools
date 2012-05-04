@@ -53,6 +53,24 @@ genNusFromWs = cms.EDProducer("GenParticlesFromZsSelector",
     minDaughters = cms.int32(1)
 )
 
+genWdecaysToElectrons = cms.EDProducer("CandViewShallowCloneCombiner",
+    checkCharge = cms.bool(True),
+    cut = cms.string('abs(charge) = 1'),
+    decay = cms.string("genElectronsFromWs@+ genNusFromWs") # CV: electron of opposite charge is included
+)
+
+genWdecaysToMuons = cms.EDProducer("CandViewShallowCloneCombiner",
+    checkCharge = cms.bool(True),
+    cut = cms.string('abs(charge) = 1'),
+    decay = cms.string("genMuonsFromWs@+ genNusFromWs") # CV: muon of opposite charge is included
+)
+
+genWdecaysToTaus = cms.EDProducer("CandViewShallowCloneCombiner",
+    checkCharge = cms.bool(True),
+    cut = cms.string('abs(charge) = 1'),
+    decay = cms.string("genTausFromWs@+ genNusFromWs") # CV: tau lepton of opposite charge is included
+)
+
 #--------------------------------------------------------------------------------
 # match tau leptons resulting from W boson decays to generator level tau-jets
 #--------------------------------------------------------------------------------
@@ -120,6 +138,7 @@ genNusFromWsWithinAcceptance = cms.EDProducer("GenParticlePruner",
 produceGenDecayProductsFromWs = cms.Sequence(
     genParticlesFromWs    
    * genElectronsFromWs * genMuonsFromWs * genTausFromWs * genNusFromWs
+   * genWdecaysToElectrons * genWdecaysToMuons * genWdecaysToTaus 
    * genTauJetsFromWs
    * genElectronsFromWtaunuDecays * genMuonsFromWtaunuDecays * genHadronsFromWtaunuDecays
    * genHadronsFromWtaunuDecaysWithinAcceptance * genNusFromWsWithinAcceptance

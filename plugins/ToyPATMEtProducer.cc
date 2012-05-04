@@ -58,9 +58,11 @@ void ToyPATMEtProducer::produce(edm::Event& evt, const edm::EventSetup& es)
       if ( genParticle->status() == 1 && isNeutrino(&(*genParticle)) ) genMEtP4 += genParticle->p4();
     }
   }
-  
-  double metPx = rnd_.Gaus(0., resolutionX_);
-  double metPy = rnd_.Gaus(0., resolutionY_);
+  //std::cout << "genMEt: Px = " << genMEtP4.px() << ", Py = " << genMEtP4.py() << std::endl;
+
+  double metPx = rnd_.Gaus(genMEtP4.px(), resolutionX_);
+  double metPy = rnd_.Gaus(genMEtP4.py(), resolutionY_);
+  //std::cout << "smearedMEt: Px = " << metPx << ", Py = " << metPy << std::endl;
 
   if ( srcElectrons_.label() != "" ) {
     edm::Handle<pat::ElectronCollection> patElectrons;
@@ -108,6 +110,7 @@ void ToyPATMEtProducer::produce(edm::Event& evt, const edm::EventSetup& es)
   genMEt.setP4(genMEtP4);
   pat::MET patMEt(met);
   patMEt.setGenMET(genMEt);
+  //std::cout << "patMEt: Px = " << patMEt.px() << ", Py = " << patMEt.py() << std::endl;
   patMETs->push_back(patMEt);
 
   evt.put(patMETs);

@@ -1,6 +1,5 @@
 #include "TauAnalysis/GenSimTools/plugins/GenMETFromNeutralsProducer.h"
 
-
 #include "TauAnalysis/CandidateTools/interface/FetchCollection.h"
 
 #include "FWCore/MessageLogger/interface/MessageLogger.h"

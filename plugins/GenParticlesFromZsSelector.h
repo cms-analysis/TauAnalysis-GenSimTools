@@ -8,11 +8,11 @@
  *
  * NOTE: Can handle case that virtual Z/gamma is missing in GenEVT record
  * 
- * \author Christian Veelken;
+ * \author Christian Veelken, UC Davis
  *
- * \version $Revision: 1.2 $
+ * \version $Revision: 1.1 $
  *
- * $Id: GenParticlesFromZsSelector.h,v 1.2 2010/09/28 11:23:35 jkolb Exp $
+ * $Id: GenParticlesFromZsSelector.h,v 1.1 2011/02/18 11:16:55 veelken Exp $
  *
  */
 

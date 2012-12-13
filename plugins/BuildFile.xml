@@ -19,7 +19,5 @@
   <use   name="CommonTools/Utils"/>
   <use   name="PhysicsTools/Utilities"/>
   <use   name="TauAnalysis/CandidateTools"/>
-  <use   name="TauAnalysis/GenSimTools"/>
-  <use   name="AnalysisDataFormats/TauAnalysis"/>
   <use   name="root"/>
 </library>

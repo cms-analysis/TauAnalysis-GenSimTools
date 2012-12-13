@@ -25,46 +25,49 @@ GenParticlesFromZsSelector::~GenParticlesFromZsSelector()
 // nothing to be done yet...
 }
 
-void findGenParticles(const reco::GenParticleCollection& genParticles, 
-		      int pdgIdMother, int pdgIdDaughter, reco::GenParticleCollection& genParticlesFromZs)
+namespace
 {
-  for ( reco::GenParticleCollection::const_iterator genParticle = genParticles.begin();
-	genParticle != genParticles.end(); ++genParticle ) {
-    if ( TMath::Abs(genParticle->pdgId()) == pdgIdMother ) {
-      unsigned numDaughters = genParticle->numberOfDaughters();
-      for ( unsigned iDaughter = 0; iDaughter < numDaughters; ++iDaughter ) {
-	const reco::GenParticle* daughter = genParticle->daughterRef(iDaughter).get();
-	if ( TMath::Abs(daughter->pdgId()) == pdgIdDaughter ) genParticlesFromZs.push_back(*daughter);
-      }
-    }
-  }
-}
-
-void findGenParticles(const reco::GenParticleCollection& genParticles, 
-		      int pdgIdDaughter, int minDaughters, bool requireSubsequentEntries, reco::GenParticleCollection& genParticlesFromZs)
-{
-  int indexDaughterPlus  = -1;
-  int indexDaughterMinus = -1;
-  
-  unsigned numGenParticles = genParticles.size();
-  for ( unsigned iGenParticle = 0; iGenParticle < numGenParticles; ++iGenParticle ) {
-    const reco::GenParticle& genParticle = genParticles[iGenParticle];
-
-    if ( TMath::Abs(genParticle.pdgId()) == pdgIdDaughter ) {
-      if      ( genParticle.charge() > 0 ) indexDaughterPlus  = (int)iGenParticle;
-      else if ( genParticle.charge() < 0 ) indexDaughterMinus = (int)iGenParticle;
-      
-      if ( indexDaughterPlus != -1 && indexDaughterMinus != -1 ) {
-	if ( TMath::Abs(indexDaughterPlus - indexDaughterMinus) == 1 || (!requireSubsequentEntries) ) {
-	  genParticlesFromZs.push_back(genParticles[indexDaughterPlus]);
-	  genParticlesFromZs.push_back(genParticles[indexDaughterMinus]);
-	  indexDaughterPlus  = -1;
-	  indexDaughterMinus = -1;
+  void findGenParticles(const reco::GenParticleCollection& genParticles, 
+			int pdgIdMother, int pdgIdDaughter, reco::GenParticleCollection& genParticlesFromZs)
+  {
+    for ( reco::GenParticleCollection::const_iterator genParticle = genParticles.begin();
+	  genParticle != genParticles.end(); ++genParticle ) {
+      if ( TMath::Abs(genParticle->pdgId()) == pdgIdMother ) {
+	unsigned numDaughters = genParticle->numberOfDaughters();
+	for ( unsigned iDaughter = 0; iDaughter < numDaughters; ++iDaughter ) {
+	  const reco::GenParticle* daughter = genParticle->daughterRef(iDaughter).get();
+	  if ( TMath::Abs(daughter->pdgId()) == pdgIdDaughter ) genParticlesFromZs.push_back(*daughter);
 	}
       }
     }
+  }
+  
+  void findGenParticles(const reco::GenParticleCollection& genParticles, 
+			int pdgIdDaughter, int minDaughters, bool requireSubsequentEntries, reco::GenParticleCollection& genParticlesFromZs)
+  {
+    int indexDaughterPlus  = -1;
+    int indexDaughterMinus = -1;
     
-    if ( (int)genParticlesFromZs.size() >= minDaughters ) break;
+    unsigned numGenParticles = genParticles.size();
+    for ( unsigned iGenParticle = 0; iGenParticle < numGenParticles; ++iGenParticle ) {
+      const reco::GenParticle& genParticle = genParticles[iGenParticle];
+      
+      if ( TMath::Abs(genParticle.pdgId()) == pdgIdDaughter ) {
+	if      ( genParticle.charge() > 0 ) indexDaughterPlus  = (int)iGenParticle;
+	else if ( genParticle.charge() < 0 ) indexDaughterMinus = (int)iGenParticle;
+	
+	if ( indexDaughterPlus != -1 && indexDaughterMinus != -1 ) {
+	  if ( TMath::Abs(indexDaughterPlus - indexDaughterMinus) == 1 || (!requireSubsequentEntries) ) {
+	    genParticlesFromZs.push_back(genParticles[indexDaughterPlus]);
+	    genParticlesFromZs.push_back(genParticles[indexDaughterMinus]);
+	    indexDaughterPlus  = -1;
+	    indexDaughterMinus = -1;
+	  }
+	}
+      }
+      
+      if ( (int)genParticlesFromZs.size() >= minDaughters ) break;
+    }
   }
 }
 

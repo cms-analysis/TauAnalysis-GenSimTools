@@ -11,6 +11,11 @@
 #include "DataFormats/ParticleFlowCandidate/interface/PFCandidate.h"
 #include "DataFormats/ParticleFlowCandidate/interface/PFCandidateFwd.h"
 
+#include "DataFormats/Common/interface/RefProd.h"
+#include "DataFormats/Common/interface/RefToPtr.h"
+
+#include <vector>
+
 ToyPATTauProducer::ToyPATTauProducer(const edm::ParameterSet& cfg)
   : ToyParticleProducerBase(cfg)
 { 
@@ -23,12 +28,12 @@ ToyPATTauProducer::~ToyPATTauProducer()
 // nothing to be done yet...
 }
 
-reco::PFCandidateRefVector getPFCandidateRefVector(reco::PFCandidateRefProd& pfCandidateRefs, const std::vector<unsigned>& indices)
+std::vector<reco::PFCandidatePtr> getPFCandidatePtrs(reco::PFCandidateRefProd& pfCandidateRefs, const std::vector<unsigned>& indices)
 {
-  reco::PFCandidateRefVector retVal;
+  std::vector<reco::PFCandidatePtr> retVal;
   for ( std::vector<unsigned>::const_iterator idx = indices.begin();
 	idx != indices.end(); ++idx ){
-    retVal.push_back(reco::PFCandidateRef(pfCandidateRefs, *idx));
+    retVal.push_back(edm::refToPtr(reco::PFCandidateRef(pfCandidateRefs, *idx)));
   }
   return retVal;
 }
@@ -87,10 +92,10 @@ void ToyPATTauProducer::produce(edm::Event& evt, const edm::EventSetup& es)
     reco::PFTau tau;
     tau.setP4(p4smearedTauJet);
     tau.setCharge(chargeTauJet);
-    tau.setleadPFChargedHadrCand(reco::PFCandidateRef(pfCandidateRefs, idxLeadPFChargedHadron));
-    tau.setsignalPFCands(getPFCandidateRefVector(pfCandidateRefs, idxPFCandidates));
-    tau.setsignalPFChargedHadrCands(getPFCandidateRefVector(pfCandidateRefs, idxPFChargedHadrons));
-    tau.setsignalPFGammaCands(getPFCandidateRefVector(pfCandidateRefs, idxPFGammas));
+    tau.setleadPFChargedHadrCand(edm::refToPtr(reco::PFCandidateRef(pfCandidateRefs, idxLeadPFChargedHadron)));
+    tau.setsignalPFCands(getPFCandidatePtrs(pfCandidateRefs, idxPFCandidates));
+    tau.setsignalPFChargedHadrCands(getPFCandidatePtrs(pfCandidateRefs, idxPFChargedHadrons));
+    tau.setsignalPFGammaCands(getPFCandidatePtrs(pfCandidateRefs, idxPFGammas));
     pat::Tau patTau(tau);
     int tauDecayMode = reco::PFTauDecayMode::tauDecayOther;
     if ( idxPFChargedHadrons.size() == 1 ) {
